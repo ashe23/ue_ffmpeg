@@ -12,11 +12,11 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 	// Adding single frame data to queue
 	AddFrameToQueue(Viewport);
 
-	TArray<FColor> SingleFrame;
+	/*TArray<FColor> SingleFrame;
 	if (FrameColorQueue.Peek(SingleFrame))
 	{
 		FFmpeg::getInstance().EncodeFrame(SingleFrame);
-	}
+	}*/
 }
 
 void UStreamGV::BeginDestroy()
