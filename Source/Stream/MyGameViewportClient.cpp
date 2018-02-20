@@ -4,6 +4,24 @@
 
 #define FRAMERATE 30
 
+void UMyGameViewportClient::Draw(FViewport* Viewport, FCanvas* SceneCanvas)
+{
+	Super::Draw(Viewport, SceneCanvas);
+
+	InitCodec(Viewport);
+
+
+	if (Over)  // You may need to set this in other class
+	{
+		Over = false;
+		TidyUp();
+	}
+
+	else {
+		CaptureFrame(Viewport);
+	}
+}
+
 void UMyGameViewportClient::InitCodec(FViewport* Viewport)
 {
 	if (!isInit)
@@ -12,7 +30,10 @@ void UMyGameViewportClient::InitCodec(FViewport* Viewport)
 
 		av_register_all();
 		avformat_network_init();
-		avformat_alloc_output_context2(&FmtCtx, nullptr, nullptr, FilePath.c_str());
+
+		av_log_set_level(AV_LOG_DEBUG);
+
+		avformat_alloc_output_context2(&FmtCtx, nullptr, "flv", FilePath.c_str());
 		if (!FmtCtx)
 		{
 			UE_LOG(LogTemp, Error, TEXT("cannot alloc format context"));
@@ -21,8 +42,8 @@ void UMyGameViewportClient::InitCodec(FViewport* Viewport)
 		Fmt = FmtCtx->oformat;
 
 		auto codec_id = AV_CODEC_ID_H264;
-		//const char codec_name[32] = "h264_nvenc";
 		auto codec = avcodec_find_encoder(codec_id);
+		//const char codec_name[32] = "h264_nvenc";
 		//auto codec = avcodec_find_encoder_by_name(codec_name);
 
 		av_format_set_video_codec(FmtCtx, codec);
@@ -56,6 +77,10 @@ void UMyGameViewportClient::InitCodec(FViewport* Viewport)
 		SwsCtx = sws_getContext(VideoSt.Ctx->width, VideoSt.Ctx->height, AV_PIX_FMT_RGBA,
 			VideoSt.Ctx->width, VideoSt.Ctx->height, VideoSt.Ctx->pix_fmt,
 			0, nullptr, nullptr, nullptr);
+
+
+		UE_LOG(LogTemp, Warning, TEXT("Codec initialized successfully"));
+		isInit = true;
 	}
 }
 
@@ -133,6 +158,8 @@ void UMyGameViewportClient::AddStream(enum AVCodecID CodecID)
 	VideoSt.Ctx->gop_size = 10;
 	//VideoSt.Ctx->max_b_frames = 1;
 	VideoSt.Ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+
+	av_opt_set(VideoSt.Ctx->priv_data, "tune", "film", 0);
 
 	//av_opt_set(VideoSt.Ctx->priv_data, "cq", TCHAR_TO_ANSI(*H264Crf), 0);  // change `cq` to `crf` if using libx264
 	//av_opt_set(VideoSt.Ctx->priv_data, "gpu", TCHAR_TO_ANSI(*DeviceNum), 0); // comment this line if using libx264
@@ -253,23 +280,7 @@ void UMyGameViewportClient::TidyUp()
 	CloseStream();
 }
 
-void UMyGameViewportClient::Draw(FViewport* Viewport, FCanvas* SceneCanvas)
-{
-	Super::Draw(Viewport, SceneCanvas);
 
-	InitCodec(Viewport);
-
-
-	if (Over)  // You may need to set this in other class
-	{
-		Over = false;
-		TidyUp();
-	}
-
-	else {
-		CaptureFrame(Viewport);
-	}
-}
 
 void UMyGameViewportClient::CaptureFrame(FViewport* Viewport)
 {

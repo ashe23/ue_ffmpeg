@@ -31,30 +31,18 @@ class STREAM_API UMyGameViewportClient : public UGameViewportClient
 	GENERATED_BODY()
 public:
 	UMyGameViewportClient() {
-		FilePath = "C:/screen/test.mp4";
+		//FilePath = "C:/screen/test.mp4";
+		FilePath = "rtmp://streams4.betconstruct.com/virtualsports/jlp";
 		//FilePath = "rtmp://a.rtmp.youtube.com/live2/qx3p-h110-dddb-306x";
+		//FilePath = "rtmp://stream-eu1hz.betconstruct.com/virtual_sports/football";
+		//FilePath = "rtmp://live.twitch.tv/app/live_44489310_853hMbzjC6MRz3KqaA8NOvD110RfvA";
 	};
 
 	virtual void Draw(FViewport* Viewport, FCanvas* SceneCanvas) override;
 
-	void FirstTimeInit();
-
 	void InitCodec(FViewport* Viewport);
 
 	void TidyUp();
-
-	void SetAutoRecording(bool val);
-	void RecordNextFrame();
-	bool CanRecordNextFrame();
-	void SetRecording(bool val);
-	void SetLevelDelay(int32 delay);
-
-	void SetOver(bool val);
-	void SetAbandon(bool val);
-	void SetFilePath(FString out_file);
-	void SetThumbnail(FString thumbnail_file, int32 thumbnail_frame);
-	void SaveThumbnailImage();
-
 private:
 	UPROPERTY(Config)
 	FString DeviceNum;
@@ -64,12 +52,6 @@ private:
 
 	UPROPERTY(Config)
 	int DeviceIndex;
-
-	UPROPERTY()
-	UFunction* ProgressFunc;
-
-	UPROPERTY()
-	UFunction* FinishFunc;
 
 	FIntPoint ViewportSize;
 	int count;
@@ -106,7 +88,10 @@ private:
 	bool Abandon;
 	bool AutoRecording;
 	bool RecordingNextFrame;
+	bool isInit = false;
 	double LastSendingTime;
+
+
 	std::string FilePath;
 	FString UEFilePath;
 	int32 LevelDelay;
@@ -121,7 +106,6 @@ private:
 	void AllocPicture();
 
 	int FFmpegEncode(AVFrame *frame);
-	bool isInit = false;
 	
 	
 };
