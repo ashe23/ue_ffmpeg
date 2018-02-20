@@ -10,15 +10,16 @@ void UMyGameViewportClient::Draw(FViewport* Viewport, FCanvas* SceneCanvas)
 
 	InitCodec(Viewport);
 
+	if (CanStream) {
+		if (Over)  // You may need to set this in other class
+		{
+			Over = false;
+			TidyUp();
+		}
 
-	if (Over)  // You may need to set this in other class
-	{
-		Over = false;
-		TidyUp();
-	}
-
-	else {
-		CaptureFrame(Viewport);
+		else {
+			CaptureFrame(Viewport);
+		}
 	}
 }
 
@@ -44,16 +45,24 @@ void UMyGameViewportClient::InitCodec(FViewport* Viewport)
 		auto codec_id = AV_CODEC_ID_H264;
 		auto codec = avcodec_find_encoder(codec_id);
 		//const char codec_name[32] = "h264_nvenc";
+		//const char codec_name[32] = "libx264";
 		//auto codec = avcodec_find_encoder_by_name(codec_name);
+		if (!codec)
+		{
+			//UE_LOG(LogTemp, Error, TEXT("Cant Find Codec: %s"), codec_name);
+			return;			
+		}
 
 		av_format_set_video_codec(FmtCtx, codec);
 
 		if (Fmt->video_codec != AV_CODEC_ID_NONE)
 		{
-			AddStream(Fmt->video_codec);
+			AddStream(codec_id);
 		}
 		OpenVideo();
 		VideoSt.NextPts = 0;
+
+		// Dump Format of output context
 		av_dump_format(FmtCtx, 0, FilePath.c_str(), 1);
 
 		if (!(Fmt->flags & AVFMT_NOFILE))
@@ -81,6 +90,7 @@ void UMyGameViewportClient::InitCodec(FViewport* Viewport)
 
 		UE_LOG(LogTemp, Warning, TEXT("Codec initialized successfully"));
 		isInit = true;
+		CanStream = true;
 	}
 }
 
@@ -138,34 +148,51 @@ void UMyGameViewportClient::AddStream(enum AVCodecID CodecID)
 	}
 
 
-	VideoSt.Stream = avformat_new_stream(FmtCtx, nullptr);
+	VideoSt.Stream = avformat_new_stream(FmtCtx, VideoCodec);
 	if (!VideoSt.Stream)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Could not allocate stream"));
 	}
 
 	VideoSt.Stream->id = FmtCtx->nb_streams - 1;
+	VideoSt.Ctx = VideoSt.Stream->codec;
 	VideoSt.Ctx = avcodec_alloc_context3(VideoCodec);
 	if (!VideoSt.Ctx)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Could not alloc an encoding context"));
 	}
 
-	VideoSt.Ctx->codec_id = CodecID;
-	VideoSt.Ctx->width = ViewportSize.X;
-	VideoSt.Ctx->height = ViewportSize.Y;
-	VideoSt.Stream->time_base = VideoSt.Ctx->time_base = { 1, FRAMERATE };
-	VideoSt.Ctx->gop_size = 10;
-	//VideoSt.Ctx->max_b_frames = 1;
-	VideoSt.Ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 
-	av_opt_set(VideoSt.Ctx->priv_data, "tune", "film", 0);
+	// if codec type is video set h264 settings
+	if (VideoSt.Ctx->codec->type == AVMEDIA_TYPE_VIDEO) {
+		AVRational timeBase{ 1, FRAMERATE };
+		VideoSt.Ctx->codec_id = CodecID;
+		VideoSt.Ctx->width = ViewportSize.X;
+		VideoSt.Ctx->height = ViewportSize.Y;
+		VideoSt.Stream->time_base = VideoSt.Ctx->time_base = { 1, FRAMERATE };
+		VideoSt.Ctx->time_base = timeBase;
+		VideoSt.Ctx->gop_size = 12;
+		VideoSt.Ctx->bit_rate = 400000;
+		//VideoSt.Ctx->max_b_frames = 1;
+		VideoSt.Ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+		VideoSt.Ctx->qmin = 2;
+		VideoSt.Ctx->qmax = 31;
+		VideoSt.Ctx->max_qdiff = 3;
+		VideoSt.Ctx->qcompress = 0.5f;
+
+		av_opt_set(VideoSt.Ctx, "tune", "film", 0);
+		av_opt_set(VideoSt.Ctx, "preset", "veryslow", 0);
+
+	}
+
 
 	//av_opt_set(VideoSt.Ctx->priv_data, "cq", TCHAR_TO_ANSI(*H264Crf), 0);  // change `cq` to `crf` if using libx264
 	//av_opt_set(VideoSt.Ctx->priv_data, "gpu", TCHAR_TO_ANSI(*DeviceNum), 0); // comment this line if using libx264
 
 	if (FmtCtx->oformat->flags & AVFMT_GLOBALHEADER)
+	{
 		VideoSt.Ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+	}
 }
 
 void UMyGameViewportClient::EncodeAndWrite()
@@ -204,9 +231,10 @@ void UMyGameViewportClient::EncodeAndWrite()
 
 int UMyGameViewportClient::WriteFrame()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Drawing"));
+	UE_LOG(LogTemp, Warning, TEXT("Encoding Frame : %d"), FrameIndex);
 	av_packet_rescale_ts(&Pkt, VideoSt.Ctx->time_base, VideoSt.Stream->time_base);
 	Pkt.stream_index = VideoSt.Stream->index;
+	FrameIndex++;
 	return av_interleaved_write_frame(FmtCtx, &Pkt);
 }
 

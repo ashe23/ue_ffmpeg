@@ -36,6 +36,8 @@ public:
 		//FilePath = "rtmp://a.rtmp.youtube.com/live2/qx3p-h110-dddb-306x";
 		//FilePath = "rtmp://stream-eu1hz.betconstruct.com/virtual_sports/football";
 		//FilePath = "rtmp://live.twitch.tv/app/live_44489310_853hMbzjC6MRz3KqaA8NOvD110RfvA";
+
+		UEFilePath = FString{ FilePath.c_str() };
 	};
 
 	virtual void Draw(FViewport* Viewport, FCanvas* SceneCanvas) override;
@@ -55,6 +57,7 @@ private:
 
 	FIntPoint ViewportSize;
 	int count;
+	uint32 FrameIndex = 0;
 
 	TArray<FColor> ColorBuffer;
 	TArray<uint8> IMG_Buffer;
@@ -82,6 +85,7 @@ private:
 	int GotOutput;
 	int InLineSize[1];
 
+	bool CanStream = false;
 	bool Start;
 	bool Over;
 	bool FirstTime;
