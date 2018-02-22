@@ -68,4 +68,6 @@ class STREAM_API UStreamGV : public UGameViewportClient
 	void ff_init_io_context();
 	void ff_init_codec_stream();
 	void ff_set_codec_params(int width, int height);
+	void ff_init_sample_scaler(int width, int height);
+	void ff_alloc_frame_buffer(int width, int height);
 };

@@ -141,13 +141,29 @@ void UStreamGV::ff_init(FViewport *Viewport)
 			}
 		}
 
-		ff_set_codec_params(Viewport->GetSizeXY().X, (Viewport->GetSizeXY().Y));
+		FIntPoint ViewportSize = Viewport->GetSizeXY();
+
+		ff_set_codec_params(ViewportSize.X, ViewportSize.Y);
 		ff_init_codec_stream();
 
 		out_stream->codecpar->extradata = out_codec_ctx->extradata;
 		out_stream->codecpar->extradata_size = out_codec_ctx->extradata_size;
 
 		av_dump_format(ofmt_ctx, 0, output_url.c_str(), 1);
+
+		ff_init_sample_scaler(ViewportSize.X, ViewportSize.Y);
+		ff_alloc_frame_buffer(ViewportSize.X, ViewportSize.Y);
+
+
+		// writing headers
+		auto ret = avformat_write_header(ofmt_ctx, nullptr);
+		if (ret < 0)
+		{
+			UE_LOG(LogTemp, Error, TEXT("Could not write header!"));
+			CanStream = false;
+			return;
+		}
+
 
 		ff_initialized = true;
 	}
@@ -204,6 +220,29 @@ void UStreamGV::ff_set_codec_params(int width, int height)
 	{
 		out_codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 	}
+}
+
+void UStreamGV::ff_init_sample_scaler(int width, int height)
+{
+	swsctx = sws_getContext(width, height, AV_PIX_FMT_BGR24, width, height, out_codec_ctx->pix_fmt, SWS_BICUBIC, nullptr, nullptr, nullptr);
+	if (!swsctx)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Could not initialize sample scaler!"));
+		CanStream = false;
+		return;
+	}
+
+}
+
+void UStreamGV::ff_alloc_frame_buffer(int width, int height)
+{
+	frame = av_frame_alloc();
+
+	//std::vector<uint8_t> framebuf(av_image_get_buffer_size(out_codec_ctx->pix_fmt, width, height, 1));
+	//av_image_fill_arrays(frame->data, frame->linesize, framebuf.data(), out_codec_ctx->pix_fmt, width, height, 1);
+	frame->width = width;
+	frame->height = height;
+	frame->format = static_cast<int>(out_codec_ctx->pix_fmt);
 }
 
 void UStreamGV::ff_init_codec_stream()
