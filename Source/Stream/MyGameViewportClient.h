@@ -31,8 +31,8 @@ class STREAM_API UMyGameViewportClient : public UGameViewportClient
 	GENERATED_BODY()
 public:
 	UMyGameViewportClient() {
-		//FilePath = "C:/screen/test.mp4";
-		FilePath = "rtmp://streams4.betconstruct.com/virtualsports/jlp";
+		FilePath = "C:/screen/test.flv";
+		//FilePath = "rtmp://streams4.betconstruct.com/virtualsports/jlp";
 		//FilePath = "rtmp://a.rtmp.youtube.com/live2/qx3p-h110-dddb-306x";
 		//FilePath = "rtmp://stream-eu1hz.betconstruct.com/virtual_sports/football";
 		//FilePath = "rtmp://live.twitch.tv/app/live_44489310_853hMbzjC6MRz3KqaA8NOvD110RfvA";
@@ -75,8 +75,8 @@ private:
 	};
 
 	OutputStream VideoSt = { 0 };
-	AVOutputFormat* Fmt;
-	AVFormatContext* FmtCtx;
+	AVOutputFormat* Fmt, *ofmt;
+	AVFormatContext* FmtCtx, *ofmt_ctx;
 	AVCodec* VideoCodec;
 	AVDictionary* Opt = nullptr;
 	SwsContext* SwsCtx;
@@ -110,6 +110,8 @@ private:
 	void AllocPicture();
 
 	int FFmpegEncode(AVFrame *frame);
+
+	void InitCodec2(FViewport *viewport);
 	
-	
+	void LogError(int ret_err);
 };

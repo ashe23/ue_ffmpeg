@@ -2,28 +2,54 @@
 
 #include "StreamGV.h"
 
+#define av_err2str(errnum) av_make_error_string((char[AV_ERROR_MAX_STRING_SIZE]){0}, AV_ERROR_MAX_STRING_SIZE, errnum)
+
 void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 {
 	Super::Draw(Viewport, SceneCanvas);
 
-	//initializing Buffer stuff
-	FFmpeg::getInstance().init();
+	// checking Screen dimensions
+	if (!isValidScreenSizes(Viewport))
+	{
+		return;
+	}
+
+	// initialize FFmpeg stuff
+
 
 	// Adding single frame data to queue
 	AddFrameToQueue(Viewport);
 
-	/*TArray<FColor> SingleFrame;
-	if (FrameColorQueue.Peek(SingleFrame))
+	if (CanStream)
 	{
-		FFmpeg::getInstance().EncodeFrame(SingleFrame);
-	}*/
+		if (StreamOver)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Stream over. Releasing data"));
+		}
+		else {
+			UE_LOG(LogTemp, Warning, TEXT("Encoding and writing frames"));
+		}
+		// if stream over
+			// release resources
+		// else
+			// encode frame
+			// write frame
+	}
 }
 
 void UStreamGV::BeginDestroy()
 {
 	Super::BeginDestroy();
+
+	StreamOver = true;
 	//todo:ashe23 here we realeasing Buffer stuff
 	UE_LOG(LogTemp, Warning, TEXT("Gameviewport destroying step!"));
+}
+
+// Screen dimensions must be divisible by 2
+bool UStreamGV::isValidScreenSizes(FViewport * Viewport)
+{
+	return Viewport->GetSizeXY().X % 2 == 0 && Viewport->GetSizeXY().Y % 2 == 0;
 }
 
 void UStreamGV::AddFrameToQueue(FViewport* Viewport)
@@ -54,8 +80,16 @@ void UStreamGV::AddFrameToQueue(FViewport* Viewport)
 	}
 
 	UE_LOG(LogTemp, Warning, TEXT("Frame %d added to queue"), FrameIndex);
-	FrameColorQueue.Enqueue(ColorBuffer);
 
 	// Incrementing frame index
 	FrameIndex++;
+}
+
+void UStreamGV::ff_error_log(int ret_err)
+{
+	char error_buf[256];
+	av_make_error_string(error_buf, sizeof(error_buf), ret_err);
+	FString ErrDescription{ error_buf };
+	UE_LOG(LogTemp, Error, TEXT("Error code: %d"), ret_err);
+	UE_LOG(LogTemp, Error, TEXT("Error desc: %s"), *ErrDescription);
 }
