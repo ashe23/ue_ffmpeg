@@ -42,22 +42,30 @@ class STREAM_API UStreamGV : public UGameViewportClient
 	
 	int32 FrameIndex = 0;	
 	
-	bool CanStream = false;
+	bool CanStream = true;
 	bool StreamOver = false;
 
 	// hold RGB data about single frame
 	TArray<FColor> ColorBuffer;
 	TArray<uint8> SingleFrameBuffer;
 
-	std::string output_url = "C:/screen/test.mp4";
+	std::string output_url = "C:/screen/test.flv";
 	
 	// FFMPEG stuff
-	AVFormatContext *ofmt_ctx = nullptr;
-	AVCodec *out_codec = nullptr;
-	AVStream *out_stream = nullptr;
-	AVCodecContext *out_codec_ctx = nullptr;
+	AVFormatContext* ofmt_ctx = nullptr;
+	AVCodec* out_codec = nullptr;
+	AVStream* out_stream = nullptr;
+	AVCodecContext* out_codec_ctx = nullptr;
+	SwsContext* swsctx = nullptr;
+	AVFrame* frame = nullptr;
+	bool ff_initialized = false;
+
 
 	void ff_error_log(int ret_err);
-
-	void ff_init();
+	// main init func , only this must be called
+	void ff_init(FViewport *Viewport);
+	void ff_init_avformat_context();
+	void ff_init_io_context();
+	void ff_init_codec_stream();
+	void ff_set_codec_params(int width, int height);
 };
