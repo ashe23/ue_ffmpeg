@@ -14,6 +14,8 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 		int32 Y = Viewport->GetSizeXY().Y;
 
 		GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Green, FString::Printf(TEXT("Screen Size: %d x %d"), X, Y));
+		GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Blue, FString::Printf(TEXT("Streaming active: %s"), !StreamOver ? TEXT("True") : TEXT("False")));
+
 	}
 
 	// checking Screen dimensions
@@ -23,20 +25,16 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 		return;
 	}
 
+
 	// initialize FFmpeg stuff
 	ff_init(Viewport);
 
 
 	if (CanStream)
 	{		
-		if (StreamOver)
+		if (!StreamOver)
 		{			
-			//ff_release_resources();
-		}
-		else
-		{
-			// Adding single frame data to queue
-			AddFrameToQueue(Viewport);
+			ReadAndSendFrame(Viewport);
 		}		
 	}
 }
@@ -46,6 +44,7 @@ void UStreamGV::BeginDestroy()
 	Super::BeginDestroy();
 
 	StreamOver = true;
+	//ff_release_resources(); // todo:ashe23 crushes, handle resource managment
 	//todo:ashe23 here we realeasing Buffer stuff
 	UE_LOG(LogTemp, Warning, TEXT("Gameviewport destroying step!"));
 }
@@ -56,7 +55,7 @@ bool UStreamGV::isValidScreenSizes(FViewport * Viewport)
 	return Viewport->GetSizeXY().X % 2 == 0 && Viewport->GetSizeXY().Y % 2 == 0;
 }
 
-void UStreamGV::AddFrameToQueue(FViewport* Viewport)
+void UStreamGV::ReadAndSendFrame(FViewport* Viewport)
 {
 	// Checking if viewport exists
 	if (!Viewport)
@@ -97,7 +96,6 @@ void UStreamGV::ff_init(FViewport *Viewport)
 		ff_init_avformat_context();
 		ff_init_io_context();
 
-		// todo:ashe23 need check for nulls
 		out_codec = avcodec_find_encoder(AV_CODEC_ID_H264);
 		if (!out_codec)
 		{
@@ -231,9 +229,6 @@ void UStreamGV::ff_alloc_frame_buffer(int width, int height)
 		CanStream = false;
 		return;
 	}
-
-	//std::vector<uint8_t> framebuf(av_image_get_buffer_size(out_codec_ctx->pix_fmt, width, height, 1));
-	//av_image_fill_arrays(frame->data, frame->linesize, framebuf.data(), out_codec_ctx->pix_fmt, width, height, 1);
 }
 
 void UStreamGV::ff_write_frame()

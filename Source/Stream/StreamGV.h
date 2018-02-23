@@ -38,7 +38,7 @@ class STREAM_API UStreamGV : public UGameViewportClient
 		
 
 	// Adds single frame rgba data to queue
-	void AddFrameToQueue(FViewport* Viewport);
+	void ReadAndSendFrame(FViewport* Viewport);
 	
 	int32 FrameIndex = 0;	
 	
@@ -51,7 +51,7 @@ class STREAM_API UStreamGV : public UGameViewportClient
 
 	//std::string output_url = "C:/screen/test.flv";
 
-	std::string output_url = "rtmp://live.twitch.tv/app/live_44489310_853hMbzjC6MRz3KqaA8NOvD110RfvA";
+	std::string output_url = "rtmp://stream-eu1hz.betconstruct.com:1935/virtual_sports/football";
 	
 	// FFMPEG stuff
 	AVFormatContext* ofmt_ctx = nullptr;
