@@ -46,10 +46,12 @@ class STREAM_API UStreamGV : public UGameViewportClient
 	bool StreamOver = false;
 
 	// hold RGB data about single frame
-	TArray<FColor> ColorBuffer;
+	//TArray<FColor> ColorBuffer;
 	TArray<uint8> SingleFrameBuffer;
 
-	std::string output_url = "C:/screen/test.flv";
+	//std::string output_url = "C:/screen/test.flv";
+
+	std::string output_url = "rtmp://live.twitch.tv/app/live_44489310_853hMbzjC6MRz3KqaA8NOvD110RfvA";
 	
 	// FFMPEG stuff
 	AVFormatContext* ofmt_ctx = nullptr;
@@ -70,4 +72,7 @@ class STREAM_API UStreamGV : public UGameViewportClient
 	void ff_set_codec_params(int width, int height);
 	void ff_init_sample_scaler(int width, int height);
 	void ff_alloc_frame_buffer(int width, int height);
+	void ff_write_frame();
+	void ff_encode_and_write_frame(FViewport* Viewport);
+	void ff_release_resources();
 };

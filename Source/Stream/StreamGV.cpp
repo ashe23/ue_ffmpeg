@@ -28,18 +28,15 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 
 
 	if (CanStream)
-	{
-		
+	{		
 		if (StreamOver)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Stream over. Releasing data"));
+		{			
+			//ff_release_resources();
 		}
 		else
 		{
 			// Adding single frame data to queue
-			//AddFrameToQueue(Viewport);
-
-			UE_LOG(LogTemp, Warning, TEXT("Encoding and writing frames"));
+			AddFrameToQueue(Viewport);
 		}		
 	}
 }
@@ -76,20 +73,7 @@ void UStreamGV::AddFrameToQueue(FViewport* Viewport)
 		return;
 	}
 
-
-	// Reading actual pixel data of single frame from viewport
-	TArray<FColor> ColorBuffer;
-	if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(),
-		FIntRect(0, 0, ViewportSize.X, ViewportSize.Y)))
-	{
-		UE_LOG(LogTemp, Error, TEXT("Cannot read from viewport.Aborting"));
-		return;
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("Frame %d added to queue"), FrameIndex);
-
-	// Incrementing frame index
-	FrameIndex++;
+	ff_encode_and_write_frame(Viewport);	
 }
 
 void UStreamGV::ff_error_log(int ret_err)
@@ -152,8 +136,7 @@ void UStreamGV::ff_init(FViewport *Viewport)
 		av_dump_format(ofmt_ctx, 0, output_url.c_str(), 1);
 
 		ff_init_sample_scaler(ViewportSize.X, ViewportSize.Y);
-		ff_alloc_frame_buffer(ViewportSize.X, ViewportSize.Y);
-
+		ff_alloc_frame_buffer(ViewportSize.X, ViewportSize.Y);		
 
 		// writing headers
 		auto ret = avformat_write_header(ofmt_ctx, nullptr);
@@ -216,6 +199,7 @@ void UStreamGV::ff_set_codec_params(int width, int height)
 	out_codec_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
 	out_codec_ctx->framerate = dst_fps;
 	out_codec_ctx->time_base = av_inv_q(dst_fps);
+
 	if (ofmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
 	{
 		out_codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -224,7 +208,7 @@ void UStreamGV::ff_set_codec_params(int width, int height)
 
 void UStreamGV::ff_init_sample_scaler(int width, int height)
 {
-	swsctx = sws_getContext(width, height, AV_PIX_FMT_BGR24, width, height, out_codec_ctx->pix_fmt, SWS_BICUBIC, nullptr, nullptr, nullptr);
+	swsctx = sws_getContext(width, height, AV_PIX_FMT_RGBA, width, height, out_codec_ctx->pix_fmt, SWS_BICUBIC, nullptr, nullptr, nullptr);
 	if (!swsctx)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Could not initialize sample scaler!"));
@@ -237,12 +221,106 @@ void UStreamGV::ff_init_sample_scaler(int width, int height)
 void UStreamGV::ff_alloc_frame_buffer(int width, int height)
 {
 	frame = av_frame_alloc();
-
-	//std::vector<uint8_t> framebuf(av_image_get_buffer_size(out_codec_ctx->pix_fmt, width, height, 1));
-	//av_image_fill_arrays(frame->data, frame->linesize, framebuf.data(), out_codec_ctx->pix_fmt, width, height, 1);
 	frame->width = width;
 	frame->height = height;
 	frame->format = static_cast<int>(out_codec_ctx->pix_fmt);
+
+	if (av_frame_get_buffer(frame, 32) < 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Could not allocate frame data"));
+		CanStream = false;
+		return;
+	}
+
+	//std::vector<uint8_t> framebuf(av_image_get_buffer_size(out_codec_ctx->pix_fmt, width, height, 1));
+	//av_image_fill_arrays(frame->data, frame->linesize, framebuf.data(), out_codec_ctx->pix_fmt, width, height, 1);
+}
+
+void UStreamGV::ff_write_frame()
+{
+	AVPacket pkt = { 0 };
+	av_init_packet(&pkt);
+
+	int ret = avcodec_send_frame(out_codec_ctx, frame);
+	if (ret < 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Error sending frame to codec context!"));
+		ff_error_log(ret);
+		CanStream = false;
+		return;
+	}
+
+	ret = avcodec_receive_packet(out_codec_ctx, &pkt);
+	if (ret < 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Error receiving packet from codec context!!"));
+		ff_error_log(ret);
+		return;		
+	}
+
+	av_interleaved_write_frame(ofmt_ctx, &pkt);
+	av_packet_unref(&pkt);
+
+	UE_LOG(LogTemp, Warning, TEXT("Frame %d added to queue"), FrameIndex);
+
+	// Incrementing frame index
+	FrameIndex++;
+}
+
+void UStreamGV::ff_encode_and_write_frame(FViewport * Viewport)
+{
+	FIntPoint ViewportSize = Viewport->GetSizeXY();
+
+	// Reading actual pixel data of single frame from viewport
+	TArray<FColor> ColorBuffer;
+	if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(),
+		FIntRect(0, 0, ViewportSize.X, ViewportSize.Y)))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Cannot read from viewport.Aborting"));
+		return;
+	}
+
+	// converting from TArray to const uint8*
+	SingleFrameBuffer.Empty();
+	SingleFrameBuffer.SetNum(ColorBuffer.Num() * 4);
+	uint8* DestPtr = nullptr;
+	for (auto i = 0; i < ColorBuffer.Num(); i++)
+	{
+		DestPtr = &SingleFrameBuffer[i * 4];
+		auto SrcPtr = ColorBuffer[i];
+		*DestPtr++ = SrcPtr.R;
+		*DestPtr++ = SrcPtr.G;
+		*DestPtr++ = SrcPtr.B;
+		*DestPtr++ = SrcPtr.A;
+	}
+
+	const uint8* inputData = SingleFrameBuffer.GetData();
+
+	// filling frame with actual data
+	int InLineSize[1];
+	InLineSize[0] = 4 * out_codec_ctx->width;
+	uint8* inData[1] = { SingleFrameBuffer.GetData() };
+	av_image_fill_arrays(frame->data, frame->linesize, inputData, out_codec_ctx->pix_fmt, ViewportSize.X, ViewportSize.Y, 1);
+	sws_scale(swsctx, inData, InLineSize, 0, out_codec_ctx->height, frame->data, frame->linesize);
+	frame->pts += av_rescale_q(1, out_codec_ctx->time_base, out_stream->time_base);
+
+
+	// writing frame
+	ff_write_frame();
+}
+
+void UStreamGV::ff_release_resources()
+{
+	UE_LOG(LogTemp, Warning, TEXT("Stream over. Releasing data"));
+
+	// Release Resources
+	av_write_trailer(ofmt_ctx);
+	av_frame_free(&frame);
+	avcodec_close(out_codec_ctx);
+	avio_close(ofmt_ctx->pb);
+	avformat_free_context(ofmt_ctx);
+
+	UE_LOG(LogTemp, Warning, TEXT("Data released successfully"));
 }
 
 void UStreamGV::ff_init_codec_stream()
