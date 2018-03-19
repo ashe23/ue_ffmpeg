@@ -13,8 +13,8 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 		int32 X = Viewport->GetSizeXY().X;
 		int32 Y = Viewport->GetSizeXY().Y;
 
-		GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Green, FString::Printf(TEXT("Screen Size: %d x %d"), X, Y));
-		GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Blue, FString::Printf(TEXT("Streaming active: %s"), !StreamOver ? TEXT("True") : TEXT("False")));
+		//GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Green, FString::Printf(TEXT("Screen Size: %d x %d"), X, Y));
+		//GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Blue, FString::Printf(TEXT("Streaming active: %s"), !StreamOver ? TEXT("True") : TEXT("False")));
 
 	}
 
@@ -26,17 +26,30 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 	}
 
 
-	// initialize FFmpeg stuff
-	ff_init(Viewport);
-
-
-	if (CanStream)
-	{		
-		if (!StreamOver)
-		{			
-			ReadAndSendFrame(Viewport);
-		}		
+	if (!Muxer)
+	{
+		Muxer = new FFMuxer;
+		Muxer->Initialize();
 	}
+
+	Muxer->Mux(Viewport);
+	
+	//if (Muxer.Ready())
+	//{
+	//	Muxer.Mux();
+	//}
+
+	// initialize FFmpeg stuff
+	//ff_init(Viewport);
+
+
+	//if (CanStream)
+	//{		
+	//	if (!StreamOver)
+	//	{			
+	//		ReadAndSendFrame(Viewport);
+	//	}		
+	//}
 }
 
 void UStreamGV::BeginDestroy()
@@ -143,8 +156,7 @@ void UStreamGV::ff_init(FViewport *Viewport)
 			UE_LOG(LogTemp, Error, TEXT("Could not write header!"));
 			CanStream = false;
 			return;
-		}
-
+		}		
 
 		ff_initialized = true;
 	}
@@ -253,6 +265,10 @@ void UStreamGV::ff_write_frame()
 		return;		
 	}
 
+
+	// merge audio with video and push
+
+
 	av_interleaved_write_frame(ofmt_ctx, &pkt);
 	av_packet_unref(&pkt);
 
@@ -295,7 +311,6 @@ void UStreamGV::ff_encode_and_write_frame(FViewport * Viewport)
 	int InLineSize[1];
 	InLineSize[0] = 4 * out_codec_ctx->width;
 	uint8* inData[1] = { SingleFrameBuffer.GetData() };
-	av_image_fill_arrays(frame->data, frame->linesize, inputData, out_codec_ctx->pix_fmt, ViewportSize.X, ViewportSize.Y, 1);
 	sws_scale(swsctx, inData, InLineSize, 0, out_codec_ctx->height, frame->data, frame->linesize);
 	frame->pts += av_rescale_q(1, out_codec_ctx->time_base, out_stream->time_base);
 
@@ -316,6 +331,12 @@ void UStreamGV::ff_release_resources()
 	avformat_free_context(ofmt_ctx);
 
 	UE_LOG(LogTemp, Warning, TEXT("Data released successfully"));
+}
+
+void UStreamGV::ff_audio_init()
+{
+	//FString InputAudioPath = FPaths::ProjectDir() + "ThirdParty/audio/song1.mp3";
+	//avformat_open_input(&ifmt_ctx_audio, TCHAR_TO_ANSI(*InputAudioPath), nullptr,nullptr);
 }
 
 void UStreamGV::ff_init_codec_stream()
