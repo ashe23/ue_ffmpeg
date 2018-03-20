@@ -2,8 +2,11 @@
 
 #include "FFMuxer.h"
 
-void FFMuxer::Initialize()
+void FFMuxer::Initialize(int32 Width, int32 Height)
 {
+	width = Width;
+	height = Height;
+
 	if (!initialized)
 	{
 		UE_LOG(LogTemp,Warning,TEXT("Initializing ffmpeg"));
@@ -13,27 +16,27 @@ void FFMuxer::Initialize()
 		if (InitOutputFormatContext() && InitIOContext())
 		{
 			if (InitCodecs())
-			{
-				if (InitStreams())
+			{				
+				if (OpenCodecs())
 				{
-					if (OpenCodecs())
+					/*AudioStream->codecpar->extradata = AudioCodecContext->extradata;
+					AudioStream->codecpar->extradata_size = AudioCodecContext->extradata_size;*/
+					VideoStream->codecpar->extradata = VideoCodecContext->extradata;
+					VideoStream->codecpar->extradata_size = VideoCodecContext->extradata_size;
+
+					av_dump_format(OutputFormatContext, 0, OUTPUT_URL, 1);
+
+					if (InitSampleScaler() && AllocateFrames())
 					{
-						av_dump_format(OutputFormatContext, 0, OUTPUT_URL, 1);
-
-						if (AllocateFrames() && InitSampleScaler())
+						// Writing header
+						if (WriteHeader())
 						{
-							// Writing header
-							if (WriteHeader())
-							{
-								UE_LOG(LogTemp, Warning, TEXT("Initialized Successfully"));
-								CanStream = true;
-							}
+							UE_LOG(LogTemp, Warning, TEXT("Initialized Successfully"));
+							CanStream = true;
 						}
-
 					}
 
 				}
-
 			}
 		}
 
@@ -62,6 +65,7 @@ void FFMuxer::Mux(FViewport* Viewport)
 	if (CanStream)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Muxing"));
+
 
 		if (
 			av_compare_ts(
@@ -102,26 +106,33 @@ void FFMuxer::InitFFmpeg()
 
 bool FFMuxer::InitOutputFormatContext()
 {
-	int ret = avformat_alloc_output_context2(&OutputFormatContext, nullptr, nullptr, OUTPUT_URL);
+	int ret = avformat_alloc_output_context2(&OutputFormatContext, nullptr, "flv", nullptr);
 	if (ret < 0)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Could not allocate output format context!"));
 		PrintError(ret);
 		return false;
 	}
-	OutputFormat = OutputFormatContext->oformat;
+	//OutputFormat = OutputFormatContext->oformat;
 
 	return true;
 }
 
 bool FFMuxer::InitIOContext()
 {
+	if (!OutputFormatContext)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Output context is NULL!"));
+		CanStream = false;
+		return false;
+	}
 	if (!(OutputFormatContext->oformat->flags & AVFMT_NOFILE))
 	{
 		int ret = avio_open2(&OutputFormatContext->pb, OUTPUT_URL, AVIO_FLAG_WRITE, nullptr, nullptr);
 		if (ret < 0)
 		{
 			UE_LOG(LogTemp, Error, TEXT("Could not open output IO context!"));
+			PrintError(ret);
 			return false;
 		}
 	}
@@ -151,6 +162,14 @@ bool FFMuxer::InitCodecs()
 		UE_LOG(LogTemp, Error, TEXT("Could not find 'h264' codec!"));
 		return false;
 	}
+
+	VideoStream = avformat_new_stream(OutputFormatContext, VideoCodec);
+	if (!VideoStream)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Could not create new stream!"));
+		return false;
+	}
+
 	VideoCodecContext = avcodec_alloc_context3(VideoCodec);
 	if (!VideoCodecContext)
 	{
@@ -160,8 +179,8 @@ bool FFMuxer::InitCodecs()
 
 	SetCodecParams();
 
-	av_format_set_video_codec(OutputFormatContext, VideoCodec);
-	av_format_set_audio_codec(OutputFormatContext, AudioCodec);
+	//av_format_set_video_codec(OutputFormatContext, VideoCodec);
+	//av_format_set_audio_codec(OutputFormatContext, AudioCodec);
 
 	return true;
 }
@@ -198,7 +217,7 @@ bool FFMuxer::AllocateFrames()
 		return false;
 	}
 
-	VideoFrame->format = AV_SAMPLE_FMT_S16P;
+	VideoFrame->format = AV_PIX_FMT_YUV420P;
 	VideoFrame->width = width;
 	VideoFrame->height = height;
 
@@ -206,6 +225,7 @@ bool FFMuxer::AllocateFrames()
 	if (ret < 0)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Error allocate frame for video"));
+		PrintError(ret);
 		return false;
 	}
 
@@ -262,6 +282,11 @@ void FFMuxer::SetCodecParams()
 	VideoCodecContext->framerate = dst_fps;
 	VideoCodecContext->time_base = av_inv_q(dst_fps);	
 
+	if (OutputFormatContext->oformat->flags & AVFMT_GLOBALHEADER)
+	{
+		VideoCodecContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+	}
+
 	// Audio codec params
 	AudioCodecContext->codec_id = AV_CODEC_ID_MP3;
 	AudioCodecContext->codec_type = AVMEDIA_TYPE_AUDIO;
@@ -271,10 +296,23 @@ void FFMuxer::SetCodecParams()
 	AudioCodecContext->channels = av_get_channel_layout_nb_channels(AudioCodecContext->channel_layout);
 	AudioCodecContext->bit_rate = 64000;	
 
+	/*if (OutputFormatContext->oformat->flags & AVFMT_GLOBALHEADER)
+	{
+		AudioCodecContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+	}*/
+
 	// Set Dictionary	
 	av_dict_set(&Dictionary, "profile", "high", 0);
 	av_dict_set(&Dictionary, "preset", "superfast", 0);
 	av_dict_set(&Dictionary, "tune", "zerolatency", 0);
+
+	int ret = avcodec_parameters_from_context(VideoStream->codecpar, VideoCodecContext);
+	if (ret < 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Could not initialize stream codec parameters!"));
+		PrintError(ret);
+		return;
+	}
 }
 
 bool FFMuxer::InitStreams()
@@ -310,20 +348,20 @@ bool FFMuxer::InitStreams()
 		return false;
 	}
 
-	AudioStream->codec->codec_tag = 0;
+	/*AudioStream->codec->codec_tag = 0;
 	VideoStream->codec->codec_tag = 0;
 	if (OutputFormatContext->oformat->flags & AVFMT_GLOBALHEADER)
 	{
 		AudioStream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
 		VideoStream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
-	}
+	}*/
 
 	return true;
 }
 
 bool FFMuxer::WriteHeader()
 {
-	int ret = avformat_write_header(OutputFormatContext, &Dictionary);
+	int ret = avformat_write_header(OutputFormatContext, nullptr);
 	if (ret < 0)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Cant Write header!"));
@@ -347,52 +385,61 @@ bool FFMuxer::WriteTrailer()
 
 bool FFMuxer::WriteVideoFrame(FViewport* Viewport)
 {
-	if (Viewport)
+	// Checking if viewport exists
+	if (!Viewport)
 	{
-		FIntPoint ViewportSize = Viewport->GetSizeXY();
-		TArray<FColor> ColorBuffer;
-		TArray<uint8> SingleFrameBuffer;
-
-		// Reading actual pixel data of single frame from viewport
-		if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(),
-			FIntRect(0, 0, ViewportSize.X, ViewportSize.Y)))
-		{
-			UE_LOG(LogTemp, Error, TEXT("Cannot read from viewport.Aborting"));
-			return false;
-		}
-
-		// converting from TArray to const uint8*
-		SingleFrameBuffer.Empty();
-		SingleFrameBuffer.SetNum(ColorBuffer.Num() * 4);
-		uint8* DestPtr = nullptr;
-		for (auto i = 0; i < ColorBuffer.Num(); i++)
-		{
-			DestPtr = &SingleFrameBuffer[i * 4];
-			auto SrcPtr = ColorBuffer[i];
-			*DestPtr++ = SrcPtr.R;
-			*DestPtr++ = SrcPtr.G;
-			*DestPtr++ = SrcPtr.B;
-			*DestPtr++ = SrcPtr.A;
-		}
-
-		const uint8* inputData = SingleFrameBuffer.GetData();
-
-		// filling frame with actual data
-		int InLineSize[1];
-		InLineSize[0] = 4 * VideoCodecContext->width;
-		uint8* inData[1] = { SingleFrameBuffer.GetData() };
-
-		sws_scale(SamplerContext, inData, InLineSize, 0, VideoCodecContext->height, VideoFrame->data, VideoFrame->linesize);
-		//VideoFrame->pts += av_rescale_q(1, VideoCodecContext->time_base, VideoStream->time_base);
-		CurrentVideoPTS = VideoFrame->pts;
-
-
-		Encode(VideoFrame, EFrameType::Video);
-
-		return true;
+		UE_LOG(LogTemp, Error, TEXT("No viewport.Aborting"));
+		return false;
 	}
 
-	return false;
+	// Determine viewport size
+	FIntPoint ViewportSize = Viewport->GetSizeXY();
+	if (ViewportSize.X == 0 || ViewportSize.Y == 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("No viewport size.Aborting"));
+		return false;
+	}
+
+	if (ViewportSize.X % 2 != 0 || ViewportSize.Y % 2 != 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Invalid Screen size. Must divisible by 2!"));
+		return false;
+	}
+	
+	// Reading actual pixel data of single frame from viewport
+	TArray<FColor> ColorBuffer;
+	if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(),
+		FIntRect(0, 0, ViewportSize.X, ViewportSize.Y)))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Cannot read from viewport.Aborting"));
+		return false;
+	}	
+		
+	// converting from TArray to const uint8*
+	SingleFrameBuffer.Empty();
+	SingleFrameBuffer.SetNum(ColorBuffer.Num() * 4);
+	uint8* DestPtr = nullptr;
+	for (auto i = 0; i < ColorBuffer.Num(); i++)
+	{
+		DestPtr = &SingleFrameBuffer[i * 4];
+		auto SrcPtr = ColorBuffer[i];
+		*DestPtr++ = SrcPtr.R;
+		*DestPtr++ = SrcPtr.G;
+		*DestPtr++ = SrcPtr.B;
+		*DestPtr++ = SrcPtr.A;
+	}
+
+	const uint8* inputData = SingleFrameBuffer.GetData();
+
+	// filling frame with actual data
+	int InLineSize[1];
+	InLineSize[0] = 4 * VideoCodecContext->width;
+	uint8* inData[1] = { SingleFrameBuffer.GetData() };
+	sws_scale(SamplerContext, inData, InLineSize, 0, VideoCodecContext->height, VideoFrame->data, VideoFrame->linesize);
+	VideoFrame->pts += av_rescale_q(1, VideoCodecContext->time_base, VideoStream->time_base);
+	//CurrentVideoPTS = VideoFrame->pts;
+
+	return Encode(VideoFrame, EFrameType::Video);
 }
 
 bool FFMuxer::Encode(AVFrame * Frame, EFrameType Type)

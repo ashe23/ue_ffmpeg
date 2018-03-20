@@ -31,14 +31,14 @@ class STREAM_API UStreamGV : public UGameViewportClient
 
 	int32 FrameIndex = 0;
 
-	bool CanStream = false;
+	bool CanStream = true;
 	bool StreamOver = false;
 
 	// hold RGB data about single frame
 	//TArray<FColor> ColorBuffer;
 	TArray<uint8> SingleFrameBuffer;
 
-	std::string output_url = "C:/screen/test.flv";
+	std::string output_url = "C:/screen/test.mp4";
 	//std::string output_url = "rtmp://stream-eu1hz.betconstruct.com:1935/virtual_sports/football";
 
 	// FFMPEG stuff

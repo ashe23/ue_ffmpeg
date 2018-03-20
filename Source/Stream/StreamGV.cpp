@@ -29,8 +29,9 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 
 	if (!Muxer)
 	{
+		FIntPoint ViewportSize = Viewport->GetSizeXY();
 		Muxer = new FFMuxer;
-		Muxer->Initialize();
+		Muxer->Initialize(ViewportSize.X,ViewportSize.Y);
 	}
 
 	if (Muxer->IsReadyToStream())
@@ -38,11 +39,6 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 		Muxer->Mux(Viewport);
 	}
 	
-	//if (Muxer.IsInitialized())
-	//{
-	//	Muxer.Mux();
-	//}
-
 	// initialize FFmpeg stuff
 	//ff_init(Viewport);
 

@@ -20,7 +20,7 @@ enum class EFrameType
 class STREAM_API FFMuxer
 {
 public:	
-	void Initialize();
+	void Initialize(int32 Width,int32 Height);
 	bool IsInitialized() const;
 	bool IsReadyToStream() const;
 	void Mux(FViewport* Viewport);
@@ -58,12 +58,13 @@ private:
 	bool Encode(AVFrame* Frame, EFrameType Type);
 	// FFmpeg methods end
 private:
+	TArray<uint8> SingleFrameBuffer;
 	FViewport * MuxViewport = nullptr;
 	bool initialized = false;
 	bool CanStream = false;
 	static const int FPS = 30;
-	int width = 1280;
-	int height = 720;
+	int width = 0;
+	int height = 0;
 	const char* OUTPUT_URL = "C:/screen/test.mp4";
 	int64_t CurrentVideoPTS = 0;
 	int64_t CurrentAudioPTS = 0;
