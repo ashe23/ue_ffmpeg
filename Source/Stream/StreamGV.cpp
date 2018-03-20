@@ -34,7 +34,7 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 	}
 
 	if (Muxer->IsReadyToStream())
-	{
+	{		
 		Muxer->Mux(Viewport);
 	}
 	

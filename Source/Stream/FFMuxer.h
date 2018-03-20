@@ -8,6 +8,12 @@
 #include "Runtime/Engine/Public/UnrealClient.h"
 #include <string>
 
+enum class EFrameType
+{
+	Video,
+	Audio
+};
+
 /**
  * 
  */
@@ -26,9 +32,14 @@ private:
 	AVStream* OutputStream = nullptr;
 	AVCodec* AudioCodec = nullptr;
 	AVCodec* VideoCodec = nullptr;
+	AVStream* AudioStream = nullptr;
+	AVStream* VideoStream = nullptr;
+	AVFrame* AudioFrame = nullptr;
+	AVFrame* VideoFrame = nullptr;
 	AVCodecContext* AudioCodecContext = nullptr;
 	AVCodecContext* VideoCodecContext = nullptr;
 	AVDictionary* Dictionary = nullptr;
+	SwsContext* SamplerContext = nullptr;
 	// FFmpeg variables end
 private:
 	// FFmpeg methods start
@@ -36,11 +47,15 @@ private:
 	bool InitOutputFormatContext();
 	bool InitIOContext();
 	bool InitCodecs();
+	bool AllocateFrames();
+	bool InitSampleScaler();
 	bool OpenCodecs();
 	void SetCodecParams();
 	bool InitStreams();
 	bool WriteHeader();
 	bool WriteTrailer();
+	bool WriteVideoFrame(FViewport* Viewport);
+	bool Encode(AVFrame* Frame, EFrameType Type);
 	// FFmpeg methods end
 private:
 	FViewport * MuxViewport = nullptr;
@@ -50,6 +65,8 @@ private:
 	int width = 1280;
 	int height = 720;
 	const char* OUTPUT_URL = "C:/screen/test.mp4";
+	int64_t CurrentVideoPTS = 0;
+	int64_t CurrentAudioPTS = 0;
 	AVRational GetRational(int num, int den);
 	void PrintError(int ErrorCode);
 };

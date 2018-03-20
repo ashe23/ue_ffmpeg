@@ -20,12 +20,16 @@ void FFMuxer::Initialize()
 					{
 						av_dump_format(OutputFormatContext, 0, OUTPUT_URL, 1);
 
-						// Writing header
-						if (WriteHeader())
+						if (AllocateFrames() && InitSampleScaler())
 						{
-							UE_LOG(LogTemp, Warning, TEXT("Initialized Successfully"));
-							CanStream = true;
-						}						
+							// Writing header
+							if (WriteHeader())
+							{
+								UE_LOG(LogTemp, Warning, TEXT("Initialized Successfully"));
+								CanStream = true;
+							}
+						}
+
 					}
 
 				}
@@ -58,6 +62,25 @@ void FFMuxer::Mux(FViewport* Viewport)
 	if (CanStream)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Muxing"));
+
+		if (
+			av_compare_ts(
+				CurrentVideoPTS,
+				VideoCodecContext->time_base,
+				CurrentAudioPTS,
+				AudioCodecContext->time_base
+			) <= 0)
+		{
+
+			// Writing video frame
+			UE_LOG(LogTemp, Warning, TEXT("Writing video frame"));
+			WriteVideoFrame(Viewport);
+		}
+		else
+		{
+			// Writing audio frame
+			UE_LOG(LogTemp, Warning, TEXT("Writing audio frame"));
+		}
 	}
 	else
 	{
@@ -143,6 +166,65 @@ bool FFMuxer::InitCodecs()
 	return true;
 }
 
+bool FFMuxer::AllocateFrames()
+{
+	int ret;
+
+	// audio
+	AudioFrame = av_frame_alloc();
+	if (!AudioFrame)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Cant allocate frame for audio"));
+		return false;
+	}
+
+	AudioFrame->format = AV_SAMPLE_FMT_S16P;
+	AudioFrame->channel_layout = AudioCodecContext->channel_layout;
+	AudioFrame->sample_rate = AudioCodecContext->sample_rate;
+	AudioFrame->nb_samples = AudioCodecContext->frame_size;
+
+	ret = av_frame_get_buffer(AudioFrame, 0);
+	if (ret < 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Error allocate frame for audio"));
+		return false;
+	}
+
+	// video
+	VideoFrame = av_frame_alloc();
+	if (!VideoFrame)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Cant allocate frame for video"));
+		return false;
+	}
+
+	VideoFrame->format = AV_SAMPLE_FMT_S16P;
+	VideoFrame->width = width;
+	VideoFrame->height = height;
+
+	ret = av_frame_get_buffer(VideoFrame, 32);
+	if (ret < 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Error allocate frame for video"));
+		return false;
+	}
+
+	return true;
+}
+
+bool FFMuxer::InitSampleScaler()
+{
+	SamplerContext = sws_getContext(width, height, AV_PIX_FMT_RGBA, width, height, VideoCodecContext->pix_fmt, SWS_BICUBIC, nullptr, nullptr, nullptr);
+	if (!SamplerContext)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Could not initialize sample scaler!"));
+		CanStream = false;
+		return false;
+	}
+
+	return true;
+}
+
 bool FFMuxer::OpenCodecs()
 {
 	int ret;
@@ -198,13 +280,13 @@ void FFMuxer::SetCodecParams()
 bool FFMuxer::InitStreams()
 {
 	int ret;
-	AVStream* AudioStream = avformat_new_stream(OutputFormatContext, AudioCodec);
+	AudioStream = avformat_new_stream(OutputFormatContext, AudioCodec);
 	if (!AudioStream)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Could not allocate Audio stream!"));
 		return false;
 	}
-	AVStream* VideoStream = avformat_new_stream(OutputFormatContext, VideoCodec);
+	VideoStream = avformat_new_stream(OutputFormatContext, VideoCodec);
 	if (!VideoStream)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Could not allocate Video stream!"));
@@ -260,6 +342,103 @@ bool FFMuxer::WriteTrailer()
 		return false;
 	}
 	
+	return true;
+}
+
+bool FFMuxer::WriteVideoFrame(FViewport* Viewport)
+{
+	if (Viewport)
+	{
+		FIntPoint ViewportSize = Viewport->GetSizeXY();
+		TArray<FColor> ColorBuffer;
+		TArray<uint8> SingleFrameBuffer;
+
+		// Reading actual pixel data of single frame from viewport
+		if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(),
+			FIntRect(0, 0, ViewportSize.X, ViewportSize.Y)))
+		{
+			UE_LOG(LogTemp, Error, TEXT("Cannot read from viewport.Aborting"));
+			return false;
+		}
+
+		// converting from TArray to const uint8*
+		SingleFrameBuffer.Empty();
+		SingleFrameBuffer.SetNum(ColorBuffer.Num() * 4);
+		uint8* DestPtr = nullptr;
+		for (auto i = 0; i < ColorBuffer.Num(); i++)
+		{
+			DestPtr = &SingleFrameBuffer[i * 4];
+			auto SrcPtr = ColorBuffer[i];
+			*DestPtr++ = SrcPtr.R;
+			*DestPtr++ = SrcPtr.G;
+			*DestPtr++ = SrcPtr.B;
+			*DestPtr++ = SrcPtr.A;
+		}
+
+		const uint8* inputData = SingleFrameBuffer.GetData();
+
+		// filling frame with actual data
+		int InLineSize[1];
+		InLineSize[0] = 4 * VideoCodecContext->width;
+		uint8* inData[1] = { SingleFrameBuffer.GetData() };
+
+		sws_scale(SamplerContext, inData, InLineSize, 0, VideoCodecContext->height, VideoFrame->data, VideoFrame->linesize);
+		//VideoFrame->pts += av_rescale_q(1, VideoCodecContext->time_base, VideoStream->time_base);
+		CurrentVideoPTS = VideoFrame->pts;
+
+
+		Encode(VideoFrame, EFrameType::Video);
+
+		return true;
+	}
+
+	return false;
+}
+
+bool FFMuxer::Encode(AVFrame * Frame, EFrameType Type)
+{	
+	AVPacket pkt = { 0 };
+	av_init_packet(&pkt);
+	int ret;
+
+	if (Type == EFrameType::Video)
+	{
+		ret = avcodec_send_frame(VideoCodecContext, VideoFrame);
+	}
+	else if (Type == EFrameType::Audio)
+	{
+		ret = avcodec_send_frame(AudioCodecContext, AudioFrame);
+	}
+
+	if (ret < 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Error sending frame to codec context!"));
+		PrintError(ret);
+		CanStream = false;
+		return false;
+	}
+
+
+	if (Type == EFrameType::Video)
+	{
+		ret = avcodec_receive_packet(VideoCodecContext, &pkt);
+	}
+	else if (Type == EFrameType::Audio)
+	{
+		ret = avcodec_receive_packet(AudioCodecContext, &pkt);
+	}
+
+	if (ret < 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Error receiving packet from codec context!!"));
+		PrintError(ret);
+		CanStream = false;
+		return false;
+	}
+
+	av_interleaved_write_frame(OutputFormatContext, &pkt);
+	av_packet_unref(&pkt);
+
 	return true;
 }
 
