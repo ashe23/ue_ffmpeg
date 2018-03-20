@@ -31,6 +31,24 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 						// Writing header
 						if (WriteHeader())
 						{
+
+							// Reading Audio data 
+							// todo change later
+							FString Path = FPaths::ProjectDir() + AudioFile;
+							if (FFileHelper::LoadFileToArray(AudioBuffer, *Path))
+							{
+								UE_LOG(LogTemp, Warning, TEXT("Audio File Loaded, Size: %d"), AudioBuffer.Num());
+
+								// Removing 44 bytes of headers info from audio file
+								AudioBuffer.RemoveAt(0, 44);
+
+								UE_LOG(LogTemp, Warning, TEXT("Size: %d"), AudioBuffer.Num());
+							}
+							else
+							{
+								UE_LOG(LogTemp, Error, TEXT("Cant load audio file"));
+							}
+
 							UE_LOG(LogTemp, Warning, TEXT("Initialized Successfully"));
 							CanStream = true;
 						}
@@ -64,26 +82,21 @@ void FFMuxer::Mux(FViewport* Viewport)
 {
 	if (CanStream)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Muxing"));
+		//UE_LOG(LogTemp, Warning, TEXT("Muxing"));
 
-
-		if (
-			av_compare_ts(
-				CurrentVideoPTS,
-				VideoCodecContext->time_base,
-				CurrentAudioPTS,
-				AudioCodecContext->time_base
-			) <= 0)
+		int DecodingTime = av_compare_ts(CurrentVideoPTS, VideoCodecContext->time_base, CurrentAudioPTS, AudioCodecContext->time_base);
+		UE_LOG(LogTemp, Warning, TEXT("Decoding time for : %d"), DecodingTime);
+		if (DecodingTime <= 0) // video
 		{
-
 			// Writing video frame
-			UE_LOG(LogTemp, Warning, TEXT("Writing video frame"));
+			//UE_LOG(LogTemp, Warning, TEXT("Writing video frame"));
 			WriteVideoFrame(Viewport);
 		}
-		else
+		else // audio
 		{
 			// Writing audio frame
 			UE_LOG(LogTemp, Warning, TEXT("Writing audio frame"));
+			WriteAudioFrame();
 		}
 	}
 	else
@@ -436,10 +449,33 @@ bool FFMuxer::WriteVideoFrame(FViewport* Viewport)
 	InLineSize[0] = 4 * VideoCodecContext->width;
 	uint8* inData[1] = { SingleFrameBuffer.GetData() };
 	sws_scale(SamplerContext, inData, InLineSize, 0, VideoCodecContext->height, VideoFrame->data, VideoFrame->linesize);
+	
 	VideoFrame->pts += av_rescale_q(1, VideoCodecContext->time_base, VideoStream->time_base);
-	//CurrentVideoPTS = VideoFrame->pts;
-
+	CurrentVideoPTS = VideoFrame->pts;
+	UE_LOG(LogTemp, Warning, TEXT("Frame: %d , CurrentVideoPTS: %d"), FramesPushed, CurrentVideoPTS);
+	FramesPushed++;
 	return Encode(VideoFrame, EFrameType::Video);
+}
+
+bool FFMuxer::WriteAudioFrame()
+{
+	//int16_t *buf = (int16_t*)AudioBuffer.GetData();	
+
+	/*for (j = 0; j < AudioFrame->nb_samples; j++) {
+		v = (int)(sin(ost->t) * 10000);
+		for (i = 0; i < ost->enc->channels; i++)
+			*q++ = v;
+		ost->t += ost->tincr;
+		ost->tincr += ost->tincr2;
+	}*/
+
+	TArray<uint16_t> AudBuf;
+	AudBuf.Append(AudioBuffer);
+
+	AudioFrame->pts = CurrentAudioPTS;
+	CurrentAudioPTS += AudioFrame->nb_samples;
+
+	return false;
 }
 
 bool FFMuxer::Encode(AVFrame * Frame, EFrameType Type)
@@ -483,6 +519,7 @@ bool FFMuxer::Encode(AVFrame * Frame, EFrameType Type)
 		return false;
 	}
 
+	//av_packet_rescale_ts(&pkt, VideoStream->time_base, VideoCodecContext->time_base);
 	av_interleaved_write_frame(OutputFormatContext, &pkt);
 	av_packet_unref(&pkt);
 

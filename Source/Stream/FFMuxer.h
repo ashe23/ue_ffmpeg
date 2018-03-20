@@ -7,6 +7,8 @@
 #include "Runtime/Core/Public/Misc/Paths.h"
 #include "Runtime/Engine/Public/UnrealClient.h"
 #include <string>
+#include "Runtime/Core/Public/Misc/FileHelper.h"
+#include "Runtime/Core/Public/Misc/Paths.h"
 
 enum class EFrameType
 {
@@ -55,10 +57,12 @@ private:
 	bool WriteHeader();
 	bool WriteTrailer();
 	bool WriteVideoFrame(FViewport* Viewport);
+	bool WriteAudioFrame();
 	bool Encode(AVFrame* Frame, EFrameType Type);
 	// FFmpeg methods end
 private:
 	TArray<uint8> SingleFrameBuffer;
+	TArray<uint8> AudioBuffer;
 	FViewport * MuxViewport = nullptr;
 	bool initialized = false;
 	bool CanStream = false;
@@ -66,8 +70,10 @@ private:
 	int width = 0;
 	int height = 0;
 	const char* OUTPUT_URL = "C:/screen/test.mp4";
+	FString AudioFile = "ThirdParty/audio/Ambient1.wav";
 	int64_t CurrentVideoPTS = 0;
 	int64_t CurrentAudioPTS = 0;
+	int64_t FramesPushed = 0;
 	AVRational GetRational(int num, int den);
 	void PrintError(int ErrorCode);
 };
