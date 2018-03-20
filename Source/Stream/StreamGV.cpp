@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "StreamGV.h"
+#include "Runtime/Core/Public/Misc/FileHelper.h"
 
 #define av_err2str(errnum) av_make_error_string((char[AV_ERROR_MAX_STRING_SIZE]){0}, AV_ERROR_MAX_STRING_SIZE, errnum)
 
@@ -32,9 +33,12 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 		Muxer->Initialize();
 	}
 
-	Muxer->Mux(Viewport);
+	if (Muxer->IsReadyToStream())
+	{
+		Muxer->Mux(Viewport);
+	}
 	
-	//if (Muxer.Ready())
+	//if (Muxer.IsInitialized())
 	//{
 	//	Muxer.Mux();
 	//}
@@ -158,6 +162,8 @@ void UStreamGV::ff_init(FViewport *Viewport)
 			return;
 		}		
 
+		ff_audio_init();
+
 		ff_initialized = true;
 	}
 }
@@ -266,7 +272,6 @@ void UStreamGV::ff_write_frame()
 	}
 
 
-	// merge audio with video and push
 
 
 	av_interleaved_write_frame(ofmt_ctx, &pkt);
@@ -335,8 +340,25 @@ void UStreamGV::ff_release_resources()
 
 void UStreamGV::ff_audio_init()
 {
-	//FString InputAudioPath = FPaths::ProjectDir() + "ThirdParty/audio/song1.mp3";
-	//avformat_open_input(&ifmt_ctx_audio, TCHAR_TO_ANSI(*InputAudioPath), nullptr,nullptr);
+	FString InputAudioPath = FPaths::ProjectDir() + "ThirdParty/audio/song1.mp3";
+	TArray<uint8> AudioFileBuffer;
+	if (FFileHelper::LoadFileToArray(AudioFileBuffer, *InputAudioPath))
+	{
+		// removing header info
+		AudioFileBuffer.RemoveAt(0, 44);
+
+
+		// converting uint8 to uint16 buffer
+		TArray<uint16> AudioFileWihtoutHeader;
+		AudioFileWihtoutHeader.Append(AudioFileBuffer);
+
+		UE_LOG(LogTemp, Warning, TEXT("Audio Buffer Size:%d"), AudioFileBuffer.Num());
+		UE_LOG(LogTemp, Warning, TEXT("Audio Buffer withoutheader Size:%d"), AudioFileWihtoutHeader.Num());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Cant open file"));
+	}
 }
 
 void UStreamGV::ff_init_codec_stream()

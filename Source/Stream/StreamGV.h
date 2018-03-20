@@ -38,8 +38,8 @@ class STREAM_API UStreamGV : public UGameViewportClient
 	//TArray<FColor> ColorBuffer;
 	TArray<uint8> SingleFrameBuffer;
 
-	//std::string output_url = "C:/screen/test.flv";
-	std::string output_url = "rtmp://stream-eu1hz.betconstruct.com:1935/virtual_sports/football";
+	std::string output_url = "C:/screen/test.flv";
+	//std::string output_url = "rtmp://stream-eu1hz.betconstruct.com:1935/virtual_sports/football";
 
 	// FFMPEG stuff
 	AVFormatContext* ofmt_ctx = nullptr;
