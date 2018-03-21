@@ -16,71 +16,52 @@ enum class EFrameType
 	Audio
 };
 
+// a wrapper around a single output AVStream
+struct OutputStream {
+	AVStream *st;
+	AVCodecContext *enc;
+
+	/* pts of the next frame that will be generated */
+	int64_t next_pts;
+	int samples_count;
+
+	AVFrame *frame;
+	AVFrame *tmp_frame;
+
+	float t, tincr, tincr2;
+
+	struct SwsContext *sws_ctx;
+	struct SwrContext *swr_ctx;
+};
+
 /**
  * 
  */
 class STREAM_API FFMuxer
 {
 public:	
+	~FFMuxer();
 	void Initialize(int32 Width,int32 Height);
 	bool IsInitialized() const;
 	bool IsReadyToStream() const;
 	void Mux(FViewport* Viewport);
-	void Release();
+	void Release();	
+	void AddVideoStream(enum AVCodecID codec_id);
+	void AddAudioStream(enum AVCodecID codec_id);
 private:
-	// FFmpeg variables start
-	AVFormatContext* OutputFormatContext = nullptr;
-	AVOutputFormat* OutputFormat = nullptr;
-	AVStream* OutputStream = nullptr;
-	AVCodec* AudioCodec = nullptr;
-	AVCodec* VideoCodec = nullptr;
-	AVStream* AudioStream = nullptr;
-	AVStream* VideoStream = nullptr;
-	AVFrame* AudioFrame = nullptr;
-	AVFrame* VideoFrame = nullptr;
-	AVCodecContext* AudioCodecContext = nullptr;
-	AVCodecContext* VideoCodecContext = nullptr;
-	AVDictionary* Dictionary = nullptr;
-	SwsContext* SamplerContext = nullptr;
-	SwrContext* ResamplerContext = nullptr;
-	// FFmpeg variables end
-private:
-	// FFmpeg methods start
-	void InitFFmpeg();
-	bool InitOutputFormatContext();
-	bool InitIOContext();
-	bool InitCodecs();
-	bool AllocateFrames();
-	bool InitSampleScaler();
-	bool InitResampler();
-	bool OpenCodecs();
-	void SetCodecParams();
-	bool InitStreams();
-	bool WriteHeader();
-	bool WriteTrailer();
-	bool WriteVideoFrame(FViewport* Viewport);
-	bool WriteAudioFrame();
-	bool Encode(AVFrame* Frame, EFrameType Type);
-	// FFmpeg methods end
-private:
-	TArray<uint8> SingleFrameBuffer;
-	TArray<uint8> AudioBuffer;
-	FViewport * MuxViewport = nullptr;
 	bool initialized = false;
 	bool CanStream = false;
-	static const int FPS = 30;
-	int width = 0;
-	int height = 0;
-	//const char* OUTPUT_URL = "rtmp://stream-eu1hz.betconstruct.com:1935/virtual_sports/football";
-	const char* OUTPUT_URL = "C:/screen/test.mp4";
-	FString AudioFile = "ThirdParty/audio/Ambient1.wav";
-	int64_t CurrentVideoPTS = 0;
-	int64_t CurrentAudioPTS = 0;
-	int64_t FramesPushed = 0;
-	AVRational GetRational(int num, int den);
-	void PrintError(int ErrorCode);
-	float t = 0;
-	float tincr = 0;
-	float tincr2 = 0;
-	int64_t SamplesCount = 0;
+	int width;
+	int height;
+	const char *filename = "C:/screen/test.mp4";
+	/// remove later
+	OutputStream *video_st, *audio_st;
+	AVOutputFormat *fmt;
+	AVFormatContext *oc;
+	AVCodec *audio_codec, *video_codec;
+	int ret;
+	int have_video = 0, have_audio = 0;
+	int encode_video = 0, encode_audio = 0;
+	AVDictionary *opt = NULL;
+	int i;
 };
