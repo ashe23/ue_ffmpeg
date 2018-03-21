@@ -42,6 +42,7 @@ private:
 	AVCodecContext* VideoCodecContext = nullptr;
 	AVDictionary* Dictionary = nullptr;
 	SwsContext* SamplerContext = nullptr;
+	SwrContext* ResamplerContext = nullptr;
 	// FFmpeg variables end
 private:
 	// FFmpeg methods start
@@ -51,6 +52,7 @@ private:
 	bool InitCodecs();
 	bool AllocateFrames();
 	bool InitSampleScaler();
+	bool InitResampler();
 	bool OpenCodecs();
 	void SetCodecParams();
 	bool InitStreams();
@@ -69,6 +71,7 @@ private:
 	static const int FPS = 30;
 	int width = 0;
 	int height = 0;
+	//const char* OUTPUT_URL = "rtmp://stream-eu1hz.betconstruct.com:1935/virtual_sports/football";
 	const char* OUTPUT_URL = "C:/screen/test.mp4";
 	FString AudioFile = "ThirdParty/audio/Ambient1.wav";
 	int64_t CurrentVideoPTS = 0;
@@ -76,4 +79,8 @@ private:
 	int64_t FramesPushed = 0;
 	AVRational GetRational(int num, int den);
 	void PrintError(int ErrorCode);
+	float t = 0;
+	float tincr = 0;
+	float tincr2 = 0;
+	int64_t SamplesCount = 0;
 };

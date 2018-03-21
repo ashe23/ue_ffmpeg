@@ -12,6 +12,7 @@ extern "C"
 #include "libavformat/avformat.h"
 #include "libavformat/avio.h"
 
+#include "libavutil/avassert.h"
 #include "libavutil/common.h"
 #include "libavutil/frame.h"
 #include "libavutil/samplefmt.h"

@@ -32,6 +32,9 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 						if (WriteHeader())
 						{
 
+							tincr = 2 * M_PI * 110.0 / AudioCodecContext->sample_rate;
+							tincr2 = 2 * M_PI * 110.0 / AudioCodecContext->sample_rate / AudioCodecContext->sample_rate;
+
 							// Reading Audio data 
 							// todo change later
 							FString Path = FPaths::ProjectDir() + AudioFile;
@@ -85,18 +88,22 @@ void FFMuxer::Mux(FViewport* Viewport)
 		//UE_LOG(LogTemp, Warning, TEXT("Muxing"));
 
 		int DecodingTime = av_compare_ts(CurrentVideoPTS, VideoCodecContext->time_base, CurrentAudioPTS, AudioCodecContext->time_base);
-		UE_LOG(LogTemp, Warning, TEXT("Decoding time for : %d"), DecodingTime);
+		//UE_LOG(LogTemp, Warning, TEXT("=========="));
+		//UE_LOG(LogTemp, Warning, TEXT("Audio TimeBase: %d - %d"), AudioCodecContext->time_base.num, AudioCodecContext->time_base.den);
+		//UE_LOG(LogTemp, Warning, TEXT("Video TimeBase: %d - %d"), VideoCodecContext->time_base.num, VideoCodecContext->time_base.den);
+		//UE_LOG(LogTemp, Warning, TEXT("=========="));
+		UE_LOG(LogTemp, Warning, TEXT("Frame Pushed: %d , AudioPTS: %d , VideoPTS: %d"), FramesPushed, CurrentAudioPTS, CurrentVideoPTS);
 		if (DecodingTime <= 0) // video
 		{
 			// Writing video frame
 			//UE_LOG(LogTemp, Warning, TEXT("Writing video frame"));
-			WriteVideoFrame(Viewport);
+			CanStream = WriteVideoFrame(Viewport);
 		}
 		else // audio
 		{
 			// Writing audio frame
 			UE_LOG(LogTemp, Warning, TEXT("Writing audio frame"));
-			WriteAudioFrame();
+			CanStream = WriteAudioFrame();
 		}
 	}
 	else
@@ -126,7 +133,7 @@ bool FFMuxer::InitOutputFormatContext()
 		PrintError(ret);
 		return false;
 	}
-	//OutputFormat = OutputFormatContext->oformat;
+	OutputFormat = OutputFormatContext->oformat;
 
 	return true;
 }
@@ -161,6 +168,12 @@ bool FFMuxer::InitCodecs()
 		UE_LOG(LogTemp, Error, TEXT("Could not find 'MP3' codec!"));
 		return false;
 	}
+	//AudioStream = avformat_new_stream(OutputFormatContext, nullptr);
+	//if (!AudioStream)
+	//{
+	//	UE_LOG(LogTemp, Error, TEXT("Could not create new stream for audio!"));
+	//	return false;
+	//}
 	AudioCodecContext = avcodec_alloc_context3(AudioCodec);
 	if (!AudioCodecContext)
 	{
@@ -179,7 +192,7 @@ bool FFMuxer::InitCodecs()
 	VideoStream = avformat_new_stream(OutputFormatContext, VideoCodec);
 	if (!VideoStream)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Could not create new stream!"));
+		UE_LOG(LogTemp, Error, TEXT("Could not create new stream for video!"));
 		return false;
 	}
 
@@ -192,8 +205,8 @@ bool FFMuxer::InitCodecs()
 
 	SetCodecParams();
 
-	//av_format_set_video_codec(OutputFormatContext, VideoCodec);
-	//av_format_set_audio_codec(OutputFormatContext, AudioCodec);
+	av_format_set_video_codec(OutputFormatContext, VideoCodec);
+	av_format_set_audio_codec(OutputFormatContext, AudioCodec);
 
 	return true;
 }
@@ -258,6 +271,34 @@ bool FFMuxer::InitSampleScaler()
 	return true;
 }
 
+bool FFMuxer::InitResampler()
+{
+	int ret;
+	ResamplerContext = swr_alloc();
+	if (!ResamplerContext) 
+	{
+		UE_LOG(LogTemp, Error, TEXT("Could not allocate resampler context"));
+		return false;
+	}
+
+	/* set options */
+	av_opt_set_int(ResamplerContext, "in_channel_count", AudioCodecContext->channels, 0);
+	av_opt_set_int(ResamplerContext, "in_sample_rate", AudioCodecContext->sample_rate, 0);
+	av_opt_set_sample_fmt(ResamplerContext, "in_sample_fmt", AV_SAMPLE_FMT_S16P, 0);
+	av_opt_set_int(ResamplerContext, "out_channel_count", AudioCodecContext->channels, 0);
+	av_opt_set_int(ResamplerContext, "out_sample_rate", AudioCodecContext->sample_rate, 0);
+	av_opt_set_sample_fmt(ResamplerContext, "out_sample_fmt", AudioCodecContext->sample_fmt, 0);
+
+	/* initialize the resampling context */
+	if ((ret = swr_init(ResamplerContext)) < 0) 
+	{
+		UE_LOG(LogTemp, Error, TEXT("Failed to initialize the resampling context"));
+		return false;
+	}
+
+	return true;
+}
+
 bool FFMuxer::OpenCodecs()
 {
 	int ret;
@@ -293,7 +334,7 @@ void FFMuxer::SetCodecParams()
 	VideoCodecContext->gop_size = 12;
 	VideoCodecContext->pix_fmt = AV_PIX_FMT_YUV420P;
 	VideoCodecContext->framerate = dst_fps;
-	VideoCodecContext->time_base = av_inv_q(dst_fps);	
+	VideoCodecContext->time_base = av_inv_q(dst_fps);
 
 	if (OutputFormatContext->oformat->flags & AVFMT_GLOBALHEADER)
 	{
@@ -308,6 +349,8 @@ void FFMuxer::SetCodecParams()
 	AudioCodecContext->channel_layout = AV_CH_LAYOUT_STEREO;
 	AudioCodecContext->channels = av_get_channel_layout_nb_channels(AudioCodecContext->channel_layout);
 	AudioCodecContext->bit_rate = 64000;	
+	//const AVRational AudioTimeBase = { 1, AudioCodecContext->sample_rate };
+	//AudioCodecContext->time_base = AudioTimeBase;
 
 	/*if (OutputFormatContext->oformat->flags & AVFMT_GLOBALHEADER)
 	{
@@ -378,6 +421,7 @@ bool FFMuxer::WriteHeader()
 	if (ret < 0)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Cant Write header!"));
+		PrintError(ret);
 		return false;
 	}
 
@@ -450,32 +494,67 @@ bool FFMuxer::WriteVideoFrame(FViewport* Viewport)
 	uint8* inData[1] = { SingleFrameBuffer.GetData() };
 	sws_scale(SamplerContext, inData, InLineSize, 0, VideoCodecContext->height, VideoFrame->data, VideoFrame->linesize);
 	
-	VideoFrame->pts += av_rescale_q(1, VideoCodecContext->time_base, VideoStream->time_base);
-	CurrentVideoPTS = VideoFrame->pts;
-	UE_LOG(LogTemp, Warning, TEXT("Frame: %d , CurrentVideoPTS: %d"), FramesPushed, CurrentVideoPTS);
+	auto n_res_pts = av_rescale_q(1, VideoCodecContext->time_base, VideoStream->time_base);
+	VideoFrame->pts += n_res_pts;
+	//CurrentVideoPTS = VideoFrame->pts;
+	//UE_LOG(LogTemp, Warning, TEXT("Frame: %d , CurrentVideoPTS: %d"), FramesPushed, CurrentVideoPTS);
 	FramesPushed++;
 	return Encode(VideoFrame, EFrameType::Video);
 }
 
 bool FFMuxer::WriteAudioFrame()
 {
-	//int16_t *buf = (int16_t*)AudioBuffer.GetData();	
+	int j, i, v, ret;
+	int dst_nb_samples;
+	int16_t *q = (int16_t*)AudioFrame->data[0];
 
-	/*for (j = 0; j < AudioFrame->nb_samples; j++) {
-		v = (int)(sin(ost->t) * 10000);
-		for (i = 0; i < ost->enc->channels; i++)
+	for (j = 0; j < AudioFrame->nb_samples; j++) {
+		v = (int)(sin(t) * 10000);
+		for (i = 0; i < AudioFrame->channels; i++)
 			*q++ = v;
-		ost->t += ost->tincr;
-		ost->tincr += ost->tincr2;
-	}*/
-
-	TArray<uint16_t> AudBuf;
-	AudBuf.Append(AudioBuffer);
+		t += tincr;
+		tincr += tincr2;
+	}
 
 	AudioFrame->pts = CurrentAudioPTS;
 	CurrentAudioPTS += AudioFrame->nb_samples;
 
-	return false;
+	if (AudioFrame)
+	{
+		dst_nb_samples = av_rescale_rnd(
+			swr_get_delay(ResamplerContext, AudioCodecContext->sample_rate) + AudioFrame->nb_samples,
+			AudioCodecContext->sample_rate,
+			AudioCodecContext->sample_rate, 
+			AV_ROUND_UP
+		);
+		av_assert0(dst_nb_samples == AudioFrame->nb_samples);
+	}
+
+	ret = av_frame_make_writable(AudioFrame);
+	if (ret < 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Cant make frame writable"));
+		return false;
+	}
+	ret = swr_convert(
+		ResamplerContext,
+		AudioFrame->data,
+		dst_nb_samples,
+		(const uint8_t **)AudioFrame->data,
+		AudioFrame->nb_samples
+		);
+	if (ret < 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Error while resampling"));
+		return false;
+	}
+
+	AVRational r = { 1, AudioCodecContext->sample_rate };		
+	AudioFrame->pts += av_rescale_q(SamplesCount, r, AudioCodecContext->time_base);
+	//CurrentAudioPTS = AudioFrame->pts;
+	SamplesCount += dst_nb_samples;
+	
+	return Encode(AudioFrame , EFrameType::Audio);
 }
 
 bool FFMuxer::Encode(AVFrame * Frame, EFrameType Type)
@@ -486,10 +565,12 @@ bool FFMuxer::Encode(AVFrame * Frame, EFrameType Type)
 
 	if (Type == EFrameType::Video)
 	{
+		av_packet_rescale_ts(&pkt, VideoCodecContext->time_base, VideoStream->time_base);
 		ret = avcodec_send_frame(VideoCodecContext, VideoFrame);
 	}
 	else if (Type == EFrameType::Audio)
 	{
+		av_packet_rescale_ts(&pkt, AudioCodecContext->time_base, AudioStream->time_base);
 		ret = avcodec_send_frame(AudioCodecContext, AudioFrame);
 	}
 
