@@ -2,8 +2,8 @@
 
 #include "FFMuxer.h"
 
-#define STREAM_DURATION   60.0
-#define STREAM_FRAME_RATE 25 /* 25 images/s */
+#define STREAM_DURATION   10.0
+#define STREAM_FRAME_RATE 30 /* 25 images/s */
 #define STREAM_PIX_FMT    AV_PIX_FMT_YUV420P /* default pix_fmt */
 
 #define SCALE_FLAGS SWS_BICUBIC
@@ -13,118 +13,442 @@
 	AVRational rational = { num, den };
 	return rational;
 }
+ 
 
- int write_frame(AVFormatContext *fmt_ctx, const AVRational *time_base, AVStream *st, AVPacket *pkt)
+FFMuxer::~FFMuxer()
 {
-	/* rescale output packet timestamp values from codec to stream timebase */
-	av_packet_rescale_ts(pkt, *time_base, st->time_base);
-	pkt->stream_index = st->index;
-
-	/* Write the compressed frame to the media file. */
-	return av_interleaved_write_frame(fmt_ctx, pkt);
+	Release();
 }
 
-/* Add an output stream. */
-void add_stream(OutputStream *ost, AVFormatContext *oc, AVCodec **codec, enum AVCodecID codec_id)
+void FFMuxer::Initialize(int32 Width, int32 Height)
 {
-	AVCodecContext *c;
-	int i;
+	if (!initialized)
+	{
+		PrintEngineWarning("Initializing ffmpeg");
+		initialized = true;
+		width = Width;
+		height = Height;
 
-	/* find the encoder */
-	*codec = avcodec_find_encoder(codec_id);
-	if (!(*codec)) {
-		UE_LOG(LogTemp, Error,TEXT("Could not find encoder for"));
-		return;
-	}
+		av_register_all();
 
-	ost->st = avformat_new_stream(oc, NULL);
-	if (!ost->st) {
-		UE_LOG(LogTemp, Error,TEXT( "Could not allocate stream"));
-		return;
-	}
-	ost->st->id = oc->nb_streams - 1;
-	c = avcodec_alloc_context3(*codec);
-	if (!c) {
-		UE_LOG(LogTemp, Error,TEXT( "Could not alloc an encoding context"));
-		return;
-	}
-	ost->enc = c;
+		avformat_alloc_output_context2(&FormatContext, nullptr, nullptr, filename);
+		if (!FormatContext)
+		{
+			UE_LOG(LogTemp, Error, TEXT("Cant allocate output context"));
+			return;
+		}
+		OutputFormat = FormatContext->oformat;
 
-	switch ((*codec)->type) {
-	case AVMEDIA_TYPE_AUDIO:
-		c->sample_fmt = (*codec)->sample_fmts ?
-			(*codec)->sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
-		c->bit_rate = 64000;
-		c->sample_rate = 44100;
-		if ((*codec)->supported_samplerates) {
-			c->sample_rate = (*codec)->supported_samplerates[0];
-			for (i = 0; (*codec)->supported_samplerates[i]; i++) {
-				if ((*codec)->supported_samplerates[i] == 44100)
-					c->sample_rate = 44100;
+		// add stream for video
+		if (OutputFormat->video_codec != AV_CODEC_ID_NONE)
+		{
+			AddVideoStream();
+			have_video = 1;
+			encode_video = 1;
+		}
+
+		if (OutputFormat->audio_codec != AV_CODEC_ID_NONE)
+		{
+			AddAudioStream();
+			have_audio = 1;
+			encode_audio = 1;
+		}
+
+		/* Now that all the parameters are set, we can open the audio and
+		* video codecs and allocate the necessary encode buffers. */
+		if (have_video)
+		{
+			OpenVideo();
+		}
+
+		if (have_audio) 
+		{
+			OpenAudio();
+		}
+
+		/* open the output file, if needed */
+		if (!(OutputFormat->flags & AVFMT_NOFILE))
+		{
+			ret = avio_open(&FormatContext->pb, filename, AVIO_FLAG_WRITE);
+			if (ret < 0)
+			{
+				PrintEngineError("Could not open filename");
+				return;
 			}
 		}
-		c->channels = av_get_channel_layout_nb_channels(c->channel_layout);
-		c->channel_layout = AV_CH_LAYOUT_STEREO;
-		if ((*codec)->channel_layouts) {
-			c->channel_layout = (*codec)->channel_layouts[0];
-			for (i = 0; (*codec)->channel_layouts[i]; i++) {
-				if ((*codec)->channel_layouts[i] == AV_CH_LAYOUT_STEREO)
-					c->channel_layout = AV_CH_LAYOUT_STEREO;
+
+		/* Write the stream header, if any. */
+		ret = avformat_write_header(FormatContext, nullptr);
+		if (ret < 0) 
+		{
+			PrintEngineError("Error occurred when opening output file");
+			return;
+		}		
+
+		while (encode_video || encode_audio)
+		{
+			/* select the stream to encode */
+
+			UE_LOG(LogTemp, Warning, TEXT("AudioPTS: %d , VideoPTS: %d"), audio_st.next_pts, video_st.next_pts);
+
+			int DecodeTime = av_compare_ts(video_st.next_pts, video_st.enc->time_base, audio_st.next_pts, audio_st.enc->time_base);
+			if (encode_video && (!encode_audio || DecodeTime <= 0))
+			{
+				encode_video = !WriteVideoFrame();
+			}
+			else
+			{
+				encode_audio = !WriteAudioFrame();
 			}
 		}
-		c->channels = av_get_channel_layout_nb_channels(c->channel_layout);
-		ost->st->time_base = GetRational(1, c->sample_rate);
-		break;
 
-	case AVMEDIA_TYPE_VIDEO:
-		c->codec_id = codec_id;
+		/* Write the trailer, if any. The trailer must be written before you
+		* close the CodecContexts open when you wrote the header; otherwise
+		* av_write_trailer() may try to use memory that was freed on
+		* av_codec_close(). */
+		av_write_trailer(FormatContext);
+		
+		CanStream = true;		
+		PrintEngineWarning("Initializing success");
+	}
+}
 
-		c->bit_rate = 400000;
-		/* Resolution must be a multiple of two. */
-		c->width = 352;
-		c->height = 288;
-		/* timebase: This is the fundamental unit of time (in seconds) in terms
-		* of which frame timestamps are represented. For fixed-fps content,
-		* timebase should be 1/framerate and timestamp increments should be
-		* identical to 1. */
-		ost->st->time_base = GetRational(1, STREAM_FRAME_RATE);
-		c->time_base = ost->st->time_base;
+bool FFMuxer::IsInitialized() const
+{
+	return initialized;
+}
 
-		c->gop_size = 12; /* emit one intra frame every twelve frames at most */
-		c->pix_fmt = STREAM_PIX_FMT;
-		if (c->codec_id == AV_CODEC_ID_MPEG2VIDEO) {
-			/* just for testing, we also add B-frames */
-			c->max_b_frames = 2;
+bool FFMuxer::IsReadyToStream() const
+{
+	return CanStream;
+}
+
+void FFMuxer::Mux(FViewport * Viewport)
+{
+	while (encode_video || encode_audio)
+	{
+		/* select the stream to encode */
+
+		UE_LOG(LogTemp,Warning,TEXT("AudioPTS: %d , VideoPTS: %d"), audio_st.next_pts, video_st.next_pts);
+
+		int DecodeTime = av_compare_ts(video_st.next_pts, video_st.enc->time_base, audio_st.next_pts, audio_st.enc->time_base);
+		if (encode_video && (!encode_audio || DecodeTime <= 0)) 
+		{
+			encode_video = !WriteVideoFrame();
 		}
-		if (c->codec_id == AV_CODEC_ID_MPEG1VIDEO) {
-			/* Needed to avoid using macroblocks in which some coeffs overflow.
-			* This does not happen with normal video, it just happens here as
-			* the motion of the chroma plane does not match the luma plane. */
-			c->mb_decision = 2;
+		else
+		{
+			encode_audio = !WriteAudioFrame();
 		}
-		break;
+	}
 
-	default:
-		break;
+	/* Write the trailer, if any. The trailer must be written before you
+	* close the CodecContexts open when you wrote the header; otherwise
+	* av_write_trailer() may try to use memory that was freed on
+	* av_codec_close(). */
+	av_write_trailer(FormatContext);	
+}
+
+void FFMuxer::Release()
+{
+	PrintEngineWarning("Releasing ffmpeg resources!");
+
+	/* Close each codec. */
+	if (have_video)
+	{
+		CloseVideoStream();
+	}
+	if (have_audio)
+	{
+		CloseAudioStream();
+	}
+
+	if (!(OutputFormat->flags & AVFMT_NOFILE))
+	{
+		/* Close the output file. */
+		avio_closep(&FormatContext->pb);
+	}
+
+	/* free the stream */
+	avformat_free_context(FormatContext);
+}
+
+void FFMuxer::PrintEngineError(FString ErrorString)
+{
+	UE_LOG(LogTemp, Error, TEXT("%s"), *ErrorString);
+}
+
+void FFMuxer::PrintEngineWarning(FString Text)
+{
+	UE_LOG(LogTemp, Warning, TEXT("%s"), *Text);
+}
+
+void FFMuxer::AddVideoStream()
+{
+	// allocation
+	VideoCodec = avcodec_find_encoder(AV_CODEC_ID_H264);
+	if (!VideoCodec)
+	{
+		PrintEngineError("Cant find encoder");
+		return;
+	}
+
+	video_st.st = avformat_new_stream(FormatContext, VideoCodec);
+	if (!video_st.st)
+	{
+		PrintEngineError("Cant create video stream");
+		return;
+	}
+
+	video_st.st->id = FormatContext->nb_streams - 1;
+	video_st.enc = avcodec_alloc_context3(VideoCodec);
+	if (!video_st.enc)
+	{
+		PrintEngineError("Could not allocate encoding context");
+		return;
+	}
+
+	// setting params
+	video_st.enc->codec_id = VideoCodec->id;
+	video_st.enc->bit_rate = 400000;
+	/* Resolution must be a multiple of two. */
+	video_st.enc->width = width;
+	video_st.enc->height = height;
+	/* timebase: This is the fundamental unit of time (in seconds) in terms
+	* of which frame timestamps are represented. For fixed-fps content,
+	* timebase should be 1/framerate and timestamp increments should be
+	* identical to 1. */
+	video_st.st->time_base = GetRational(1, STREAM_FRAME_RATE);
+	video_st.enc->time_base = video_st.st->time_base;
+
+	video_st.enc->gop_size = 12; /* emit one intra frame every twelve frames at most */
+	video_st.enc->pix_fmt = STREAM_PIX_FMT;
+	if (video_st.enc->codec_id == AV_CODEC_ID_MPEG2VIDEO)
+	{
+		/* just for testing, we also add B-frames */
+		video_st.enc->max_b_frames = 2;
+	}
+	if (video_st.enc->codec_id == AV_CODEC_ID_MPEG1VIDEO) 
+	{
+		/* Needed to avoid using macroblocks in which some coeffs overflow.
+		* This does not happen with normal video, it just happens here as
+		* the motion of the chroma plane does not match the luma plane. */
+		video_st.enc->mb_decision = 2;
 	}
 
 	/* Some formats want stream headers to be separate. */
-	if (oc->oformat->flags & AVFMT_GLOBALHEADER)
-		c->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+	if (FormatContext->oformat->flags & AVFMT_GLOBALHEADER)
+	{
+		video_st.enc->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+	}
 }
 
-/**************************************************************/
-/* audio output */
+void FFMuxer::AddAudioStream()
+{
+	int i;
+	// allocation
+	AudioCodec = avcodec_find_encoder(AV_CODEC_ID_AAC);
+	if (!AudioCodec)
+	{
+		PrintEngineError("Cant find encoder");
+		return;
+	}
 
-AVFrame *alloc_audio_frame(enum AVSampleFormat sample_fmt,
-	uint64_t channel_layout,
-	int sample_rate, int nb_samples)
+	audio_st.st = avformat_new_stream(FormatContext, AudioCodec);
+	if (!video_st.st)
+	{
+		PrintEngineError("Cant create audio stream");
+		return;
+	}
+
+	audio_st.st->id = FormatContext->nb_streams - 1;
+	audio_st.enc = avcodec_alloc_context3(AudioCodec);
+	if (!audio_st.enc)
+	{
+		PrintEngineError("Could not allocate encoding context");
+		return;
+	}
+
+	// set params
+	audio_st.enc->sample_fmt = AudioCodec->sample_fmts ? AudioCodec->sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
+	audio_st.enc->bit_rate = 64000;
+	audio_st.enc->sample_rate = 44100;
+	if (AudioCodec->supported_samplerates) 
+	{
+		audio_st.enc->sample_rate = AudioCodec->supported_samplerates[0];
+		for (i = 0; AudioCodec->supported_samplerates[i]; i++) 
+		{
+			if (AudioCodec->supported_samplerates[i] == 44100)
+			{
+				audio_st.enc->sample_rate = 44100;
+			}
+		}
+	}
+	audio_st.enc->channels = av_get_channel_layout_nb_channels(audio_st.enc->channel_layout);
+	audio_st.enc->channel_layout = AV_CH_LAYOUT_STEREO;
+	if (AudioCodec->channel_layouts) 
+	{
+		audio_st.enc->channel_layout = AudioCodec->channel_layouts[0];
+		for (i = 0; AudioCodec->channel_layouts[i]; i++)
+		{
+			if (AudioCodec->channel_layouts[i] == AV_CH_LAYOUT_STEREO)
+			{
+				audio_st.enc->channel_layout = AV_CH_LAYOUT_STEREO;
+			}
+		}
+	}
+	audio_st.enc->channels = av_get_channel_layout_nb_channels(audio_st.enc->channel_layout);
+	audio_st.st->time_base = GetRational(1, audio_st.enc->sample_rate);
+}
+
+void FFMuxer::OpenVideo()
+{
+	int ret;
+
+	av_dict_set(&Dictionary, "profile", "high", 0);
+	av_dict_set(&Dictionary, "preset", "superfast", 0);
+	av_dict_set(&Dictionary, "tune", "zerolatency", 0);
+
+	//video_st.next_pts = 0;
+
+	/* open the codec */
+	ret = avcodec_open2(video_st.enc, VideoCodec, &Dictionary);
+	av_dict_free(&Dictionary);
+
+	if (ret < 0)
+	{
+		PrintEngineError("Could not open video codec");
+		return;
+	}
+
+	/* allocate and init a re-usable frame */
+	video_st.frame = AllocPicture(video_st.enc->pix_fmt, video_st.enc->width, video_st.enc->height);
+	if (!video_st.frame) 
+	{
+		PrintEngineError("Could not allocate video frame");
+		return;
+	}
+
+	/* If the output format is not YUV420P, then a temporary YUV420P
+	* picture is needed too. It is then converted to the required
+	* output format. */
+	video_st.tmp_frame = nullptr;
+	if (video_st.enc->pix_fmt != AV_PIX_FMT_YUV420P) 
+	{
+		video_st.tmp_frame = AllocPicture(AV_PIX_FMT_YUV420P, video_st.enc->width, video_st.enc->height);
+		if (!video_st.tmp_frame)
+		{
+			PrintEngineError("Could not allocate temporary picture");
+			return;
+		}
+	}
+
+	/* copy the stream parameters to the muxer */
+	ret = avcodec_parameters_from_context(video_st.st->codecpar, video_st.enc);
+	if (ret < 0)
+	{
+		PrintEngineError("Could not copy the stream parameters");
+		return;
+	}
+}
+
+void FFMuxer::OpenAudio()
+{
+	int nb_samples;
+	int ret;
+
+	ret = avcodec_open2(audio_st.enc, AudioCodec, nullptr);
+	if (ret < 0) 
+	{
+		PrintEngineError("Could not open audio codec");
+		return;
+	}
+
+	/* init signal generator */
+	audio_st.t = 0;
+	audio_st.tincr = 2 * M_PI * 110.0 / audio_st.enc->sample_rate;
+	/* increment frequency by 110 Hz per second */
+	audio_st.tincr2 = 2 * M_PI * 110.0 / audio_st.enc->sample_rate / audio_st.enc->sample_rate;
+	//audio_st.next_pts = 0;
+
+	if (audio_st.enc->codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE)
+	{
+		nb_samples = 10000;
+	}
+	else
+	{
+		nb_samples = audio_st.enc->frame_size;
+	}
+
+	audio_st.frame = AllocAudioFrame(audio_st.enc->sample_fmt, audio_st.enc->channel_layout, audio_st.enc->sample_rate, nb_samples);
+	audio_st.tmp_frame = AllocAudioFrame(AV_SAMPLE_FMT_S16, audio_st.enc->channel_layout, audio_st.enc->sample_rate, nb_samples);
+
+	/* copy the stream parameters to the muxer */
+	ret = avcodec_parameters_from_context(audio_st.st->codecpar, audio_st.enc);
+	if (ret < 0) 
+	{
+		PrintEngineError("Could not copy the stream parameters");
+		return;
+	}
+
+	/* create resampler context */
+	audio_st.swr_ctx = swr_alloc();
+	if (!audio_st.swr_ctx) 
+	{
+		PrintEngineError("Could not allocate resampler context");
+		return;
+	}
+
+	/* set options */
+	av_opt_set_int(audio_st.swr_ctx, "in_channel_count", audio_st.enc->channels, 0);
+	av_opt_set_int(audio_st.swr_ctx, "in_sample_rate", audio_st.enc->sample_rate, 0);
+	av_opt_set_sample_fmt(audio_st.swr_ctx, "in_sample_fmt", AV_SAMPLE_FMT_S16, 0);
+	av_opt_set_int(audio_st.swr_ctx, "out_channel_count", audio_st.enc->channels, 0);
+	av_opt_set_int(audio_st.swr_ctx, "out_sample_rate", audio_st.enc->sample_rate, 0);
+	av_opt_set_sample_fmt(audio_st.swr_ctx, "out_sample_fmt", audio_st.enc->sample_fmt, 0);
+
+	/* initialize the resampling context */
+	if ((ret = swr_init(audio_st.swr_ctx)) < 0) 
+	{
+		PrintEngineError("Failed to initialize the resampling context");
+		return;
+	}
+}
+
+AVFrame * FFMuxer::AllocPicture(AVPixelFormat pix_fmt, int w, int h)
+{
+	AVFrame *picture;
+	int ret;
+
+	picture = av_frame_alloc();
+	if (!picture)
+	{
+		return nullptr;
+	}
+
+	picture->format = pix_fmt;
+	picture->width = w;
+	picture->height = h;
+
+	/* allocate the buffers for the frame data */
+	ret = av_frame_get_buffer(picture, 32);
+	if (ret < 0) 
+	{
+		PrintEngineError("Could not allocate frame data");
+		return nullptr;
+	}
+
+	return picture;
+}
+
+AVFrame * FFMuxer::AllocAudioFrame(AVSampleFormat sample_fmt, uint64_t channel_layout, int sample_rate, int nb_samples)
 {
 	AVFrame *frame = av_frame_alloc();
 	int ret;
 
-	if (!frame) {
-		UE_LOG(LogTemp, Error,TEXT( "Error allocating an audio frame"));
+	if (!frame) 
+	{
+		PrintEngineError("Error allocating an audio frame");
 		return nullptr;
 	}
 
@@ -133,10 +457,12 @@ AVFrame *alloc_audio_frame(enum AVSampleFormat sample_fmt,
 	frame->sample_rate = sample_rate;
 	frame->nb_samples = nb_samples;
 
-	if (nb_samples) {
+	if (nb_samples) 
+	{
 		ret = av_frame_get_buffer(frame, 0);
-		if (ret < 0) {
-			UE_LOG(LogTemp, Error,TEXT( "Error allocating an audio buffer"));
+		if (ret < 0)
+		{
+			PrintEngineError("Error allocating an audio buffer");
 			return nullptr;
 		}
 	}
@@ -144,103 +470,44 @@ AVFrame *alloc_audio_frame(enum AVSampleFormat sample_fmt,
 	return frame;
 }
 
- void open_audio(AVFormatContext *oc, AVCodec *codec, OutputStream *ost, AVDictionary *opt_arg)
+int FFMuxer::WriteVideoFrame()
 {
-	AVCodecContext *c;
-	int nb_samples;
 	int ret;
-	AVDictionary *opt = NULL;
+	AVFrame *frame;
+	int got_packet = 0;
+	AVPacket pkt = { 0 };
 
-	c = ost->enc;
+	frame = GetVideoFrame();
 
-	/* open it */
-	av_dict_copy(&opt, opt_arg, 0);
-	ret = avcodec_open2(c, codec, &opt);
-	av_dict_free(&opt);
-	if (ret < 0) {
-		UE_LOG(LogTemp, Error,TEXT( "Could not open audio codec:"));
-		return;
+	av_init_packet(&pkt);
+
+	/* encode the image */
+	ret = avcodec_encode_video2(video_st.enc, &pkt, frame, &got_packet);
+	if (ret < 0)
+	{
+		PrintEngineError("Error encoding video frame");
+		return 0;
 	}
 
-	/* init signal generator */
-	ost->t = 0;
-	ost->tincr = 2 * M_PI * 110.0 / c->sample_rate;
-	/* increment frequency by 110 Hz per second */
-	ost->tincr2 = 2 * M_PI * 110.0 / c->sample_rate / c->sample_rate;
-
-	if (c->codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE)
-		nb_samples = 10000;
+	if (got_packet)
+	{
+		ret = WriteFrame(&video_st.enc->time_base, video_st.st, &pkt);
+	}
 	else
-		nb_samples = c->frame_size;
-
-	ost->frame = alloc_audio_frame(c->sample_fmt, c->channel_layout,
-		c->sample_rate, nb_samples);
-	ost->tmp_frame = alloc_audio_frame(AV_SAMPLE_FMT_S16, c->channel_layout,
-		c->sample_rate, nb_samples);
-
-	/* copy the stream parameters to the muxer */
-	ret = avcodec_parameters_from_context(ost->st->codecpar, c);
-	if (ret < 0) {
-		UE_LOG(LogTemp, Error,TEXT( "Could not copy the stream parameters"));
-		return;
+	{
+		ret = 0;
 	}
 
-	/* create resampler context */
-	ost->swr_ctx = swr_alloc();
-	if (!ost->swr_ctx) {
-		UE_LOG(LogTemp, Error,TEXT( "Could not allocate resampler context"));
-		return;
+	if (ret < 0) 
+	{
+		PrintEngineError("Error while writing video frame");
 	}
 
-	/* set options */
-	av_opt_set_int(ost->swr_ctx, "in_channel_count", c->channels, 0);
-	av_opt_set_int(ost->swr_ctx, "in_sample_rate", c->sample_rate, 0);
-	av_opt_set_sample_fmt(ost->swr_ctx, "in_sample_fmt", AV_SAMPLE_FMT_S16, 0);
-	av_opt_set_int(ost->swr_ctx, "out_channel_count", c->channels, 0);
-	av_opt_set_int(ost->swr_ctx, "out_sample_rate", c->sample_rate, 0);
-	av_opt_set_sample_fmt(ost->swr_ctx, "out_sample_fmt", c->sample_fmt, 0);
-
-	/* initialize the resampling context */
-	if ((ret = swr_init(ost->swr_ctx)) < 0) {
-		UE_LOG(LogTemp,Error,TEXT( "Failed to initialize the resampling context"));
-		return;
-	}
+	return (frame || got_packet) ? 0 : 1;
 }
 
-/* Prepare a 16 bit dummy audio frame of 'frame_size' samples and
-* 'nb_channels' channels. */
- AVFrame *get_audio_frame(OutputStream *ost)
+int FFMuxer::WriteAudioFrame()
 {
-	AVFrame *frame = ost->tmp_frame;
-	int j, i, v;
-	int16_t *q = (int16_t*)frame->data[0];
-
-	/* check if we want to generate more frames */
-	if (av_compare_ts(ost->next_pts, ost->enc->time_base,
-		STREAM_DURATION, GetRational(1, 1)) >= 0)
-		return NULL;
-
-	for (j = 0; j <frame->nb_samples; j++) {
-		v = (int)(sin(ost->t) * 10000);
-		for (i = 0; i < ost->enc->channels; i++)
-			*q++ = v;
-		ost->t += ost->tincr;
-		ost->tincr += ost->tincr2;
-	}
-
-	frame->pts = ost->next_pts;
-	ost->next_pts += frame->nb_samples;
-
-	return frame;
-}
-
-/*
-* encode one audio frame and send it to the muxer
-* return 1 when encoding is finished, 0 otherwise
-*/
- int write_audio_frame(AVFormatContext *oc, OutputStream *ost)
-{
-	AVCodecContext *c;
 	AVPacket pkt = { 0 }; // data and size must be 0;
 	AVFrame *frame;
 	int ret;
@@ -248,131 +515,162 @@ AVFrame *alloc_audio_frame(enum AVSampleFormat sample_fmt,
 	int dst_nb_samples;
 
 	av_init_packet(&pkt);
-	c = ost->enc;
 
-	frame = get_audio_frame(ost);
+	frame = GetAudioFrame();
 
-	if (frame) {
+	if (frame) 
+	{
 		/* convert samples from native format to destination codec format, using the resampler */
 		/* compute destination number of samples */
-		dst_nb_samples = av_rescale_rnd(swr_get_delay(ost->swr_ctx, c->sample_rate) + frame->nb_samples,
-			c->sample_rate, c->sample_rate, AV_ROUND_UP);
+		dst_nb_samples = av_rescale_rnd(swr_get_delay(audio_st.swr_ctx, audio_st.enc->sample_rate) + frame->nb_samples, audio_st.enc->sample_rate, audio_st.enc->sample_rate, AV_ROUND_UP);
 		av_assert0(dst_nb_samples == frame->nb_samples);
 
 		/* when we pass a frame to the encoder, it may keep a reference to it
 		* internally;
 		* make sure we do not overwrite it here
 		*/
-		ret = av_frame_make_writable(ost->frame);
+		ret = av_frame_make_writable(audio_st.frame);
 		if (ret < 0)
 		{
-			return 1;
+			PrintEngineError("Cant make audio frame writable");
+			return 0;
 		}
-
 
 		/* convert to destination format */
-		ret = swr_convert(ost->swr_ctx,
-			ost->frame->data, dst_nb_samples,
-			(const uint8_t **)frame->data, frame->nb_samples);
-		if (ret < 0) {
-			UE_LOG(LogTemp, Error,TEXT( "Error while converting"));
-			return 1;
+		ret = swr_convert(audio_st.swr_ctx,audio_st.frame->data, dst_nb_samples,(const uint8_t **)frame->data, frame->nb_samples);
+		if (ret < 0) 
+		{
+			PrintEngineError("Error while converting");
+			return 0;
 		}
-		frame = ost->frame;
+		frame = audio_st.frame;
 
-		frame->pts = av_rescale_q(ost->samples_count, GetRational(1, c->sample_rate), c->time_base);
-		ost->samples_count += dst_nb_samples;
+		frame->pts = av_rescale_q(audio_st.samples_count, GetRational(1, audio_st.enc->sample_rate), audio_st.enc->time_base);
+		audio_st.samples_count += dst_nb_samples;
 	}
 
-	ret = avcodec_encode_audio2(c, &pkt, frame, &got_packet);
-	if (ret < 0) {
-		UE_LOG(LogTemp, Error,TEXT( "Error encoding audio frame"));
-		return 1;
+	ret = avcodec_encode_audio2(audio_st.enc, &pkt, frame, &got_packet);
+	if (ret < 0) 
+	{
+		PrintEngineError("Error encoding audio frame");
+		return 0;
 	}
 
-	if (got_packet) {
-		ret = write_frame(oc, &c->time_base, ost->st, &pkt);
-		if (ret < 0) {
-			UE_LOG(LogTemp, Error,TEXT( "Error while writing audio frame:"));
-			return 1;
+	if (got_packet) 
+	{
+		ret = WriteFrame(&audio_st.enc->time_base, audio_st.st, &pkt);
+		if (ret < 0) 
+		{
+			PrintEngineError("Error while writing audio frame");
+			return 0;
 		}
 	}
 
 	return (frame || got_packet) ? 0 : 1;
 }
 
-/**************************************************************/
-/* video output */
-
- AVFrame *alloc_picture(enum AVPixelFormat pix_fmt, int width, int height)
+int FFMuxer::WriteFrame(const AVRational * time_base, AVStream * st, AVPacket * pkt)
 {
-	AVFrame *picture;
-	int ret;
+	/* rescale output packet timestamp values from codec to stream timebase */
+	av_packet_rescale_ts(pkt, *time_base, st->time_base);
+	pkt->stream_index = st->index;
 
-	picture = av_frame_alloc();
-	if (!picture)
-		return NULL;
+	/* Write the compressed frame to the media file. */
+	return av_interleaved_write_frame(FormatContext, pkt);
+}
 
-	picture->format = pix_fmt;
-	picture->width = width;
-	picture->height = height;
-
-	/* allocate the buffers for the frame data */
-	ret = av_frame_get_buffer(picture, 32);
-	if (ret < 0) {
-		UE_LOG(LogTemp,Error,TEXT( "Could not allocate frame data"));
+AVFrame * FFMuxer::GetVideoFrame()
+{
+	/* check if we want to generate more frames */
+	if (av_compare_ts(video_st.next_pts, video_st.enc->time_base, STREAM_DURATION, GetRational(1, 1)) >= 0)
+	{
 		return nullptr;
 	}
 
-	return picture;
-}
-
- void open_video(AVFormatContext *oc, AVCodec *codec, OutputStream *ost, AVDictionary *opt_arg)
-{
-	int ret;
-	AVCodecContext *c = ost->enc;
-	AVDictionary *opt = NULL;
-
-	av_dict_copy(&opt, opt_arg, 0);
-
-	/* open the codec */
-	ret = avcodec_open2(c, codec, &opt);
-	av_dict_free(&opt);
-	if (ret < 0) {
-		UE_LOG(LogTemp, Error,TEXT( "Could not open video codec:"));
-		return;
+	/* when we pass a frame to the encoder, it may keep a reference to it
+	* internally; make sure we do not overwrite it here */
+	if (av_frame_make_writable(video_st.frame) < 0)
+	{
+		PrintEngineError("Cant Make Frame Writable");
+		return nullptr;
 	}
 
-	/* allocate and init a re-usable frame */
-	ost->frame = alloc_picture(c->pix_fmt, c->width, c->height);
-	if (!ost->frame) {
-		UE_LOG(LogTemp,Error,TEXT( "Could not allocate video frame"));
-		return;
-	}
-
-	/* If the output format is not YUV420P, then a temporary YUV420P
-	* picture is needed too. It is then converted to the required
-	* output format. */
-	ost->tmp_frame = NULL;
-	if (c->pix_fmt != AV_PIX_FMT_YUV420P) {
-		ost->tmp_frame = alloc_picture(AV_PIX_FMT_YUV420P, c->width, c->height);
-		if (!ost->tmp_frame) {
-			UE_LOG(LogTemp,Error,TEXT( "Could not allocate temporary picture\n"));
-			return;
+	if (video_st.enc->pix_fmt != AV_PIX_FMT_YUV420P)
+	{
+		/* as we only generate a YUV420P picture, we must convert it
+		* to the codec pixel format if needed */
+		if (!video_st.sws_ctx)
+		{
+			video_st.sws_ctx = sws_getContext(video_st.enc->width, video_st.enc->height,
+				AV_PIX_FMT_YUV420P,
+				video_st.enc->width, video_st.enc->height,
+				video_st.enc->pix_fmt,
+				SCALE_FLAGS, NULL, NULL, NULL);
+			if (!video_st.sws_ctx)
+			{
+				PrintEngineError("Could not initialize the conversion context");
+				return nullptr;
+			}
 		}
+		FillYUVImage(video_st.tmp_frame, video_st.next_pts, video_st.enc->width, video_st.enc->height);
+		sws_scale(video_st.sws_ctx, (const uint8_t * const *)video_st.tmp_frame->data, video_st.tmp_frame->linesize,0, video_st.enc->height, video_st.frame->data, video_st.frame->linesize);
+	}
+	else {
+		FillYUVImage(video_st.frame, video_st.next_pts, video_st.enc->width, video_st.enc->height);
 	}
 
-	/* copy the stream parameters to the muxer */
-	ret = avcodec_parameters_from_context(ost->st->codecpar, c);
-	if (ret < 0) {
-		UE_LOG(LogTemp,Error,TEXT( "Could not copy the stream parameters\n"));
-		return;
-	}
+	video_st.frame->pts = video_st.next_pts++;
+
+	return video_st.frame;
 }
 
-/* Prepare a dummy image. */
- void fill_yuv_image(AVFrame *pict, int frame_index,
-	int width, int height)
+AVFrame * FFMuxer::GetAudioFrame()
+{
+	int j, i, v;
+	int16_t *q = (int16_t*)audio_st.tmp_frame->data[0];
+
+	/* check if we want to generate more frames */
+	if (av_compare_ts(audio_st.next_pts, audio_st.enc->time_base, STREAM_DURATION, GetRational(1, 1)) >= 0)
+	{
+		return nullptr;
+	}
+
+	for (j = 0; j <audio_st.tmp_frame->nb_samples; j++)
+	{
+		v = (int)(sin(audio_st.t) * 10000);
+		for (i = 0; i < audio_st.enc->channels; i++)
+		{
+			*q++ = v;
+		}
+		audio_st.t += audio_st.tincr;
+		audio_st.tincr += audio_st.tincr2;
+	}
+
+	audio_st.tmp_frame->pts = audio_st.next_pts;
+	audio_st.next_pts += audio_st.tmp_frame->nb_samples;
+
+	return audio_st.tmp_frame;
+}
+
+void FFMuxer::CloseVideoStream()
+{
+	avcodec_free_context(&video_st.enc);
+	av_frame_free(&video_st.frame);
+	av_frame_free(&video_st.tmp_frame);
+	sws_freeContext(video_st.sws_ctx);
+	swr_free(&video_st.swr_ctx);
+}
+
+void FFMuxer::CloseAudioStream()
+{
+	avcodec_free_context(&audio_st.enc);
+	av_frame_free(&audio_st.frame);
+	av_frame_free(&audio_st.tmp_frame);
+	sws_freeContext(audio_st.sws_ctx);
+	swr_free(&audio_st.swr_ctx);
+}
+
+void FFMuxer::FillYUVImage(AVFrame * pict, int frame_index, int width, int height)
 {
 	int x, y, i;
 
@@ -390,320 +688,4 @@ AVFrame *alloc_audio_frame(enum AVSampleFormat sample_fmt,
 			pict->data[2][y * pict->linesize[2] + x] = 64 + x + i * 5;
 		}
 	}
-}
-
- AVFrame *get_video_frame(OutputStream *ost)
-{
-	AVCodecContext *c = ost->enc;
-
-	/* check if we want to generate more frames */
-	if (av_compare_ts(ost->next_pts, c->time_base,
-		STREAM_DURATION, GetRational(1, 1)) >= 0)
-		return NULL;
-
-	/* when we pass a frame to the encoder, it may keep a reference to it
-	* internally; make sure we do not overwrite it here */
-	if (av_frame_make_writable(ost->frame) < 0)
-		exit(1);
-
-	if (c->pix_fmt != AV_PIX_FMT_YUV420P) {
-		/* as we only generate a YUV420P picture, we must convert it
-		* to the codec pixel format if needed */
-		if (!ost->sws_ctx) {
-			ost->sws_ctx = sws_getContext(c->width, c->height,
-				AV_PIX_FMT_YUV420P,
-				c->width, c->height,
-				c->pix_fmt,
-				SCALE_FLAGS, NULL, NULL, NULL);
-			if (!ost->sws_ctx) {
-				UE_LOG(LogTemp, Error,TEXT("Could not initialize the conversion context"));
-				return nullptr;
-			}
-		}
-		fill_yuv_image(ost->tmp_frame, ost->next_pts, c->width, c->height);
-		sws_scale(ost->sws_ctx,
-			(const uint8_t * const *)ost->tmp_frame->data, ost->tmp_frame->linesize,
-			0, c->height, ost->frame->data, ost->frame->linesize);
-	}
-	else {
-		fill_yuv_image(ost->frame, ost->next_pts, c->width, c->height);
-	}
-
-	ost->frame->pts = ost->next_pts++;
-
-	return ost->frame;
-}
-
-/*
-* encode one video frame and send it to the muxer
-* return 1 when encoding is finished, 0 otherwise
-*/
- int write_video_frame(AVFormatContext *oc, OutputStream *ost)
-{
-	int ret;
-	AVCodecContext *c;
-	AVFrame *frame;
-	int got_packet = 0;
-	AVPacket pkt = { 0 };
-
-	c = ost->enc;
-
-	frame = get_video_frame(ost);
-
-	av_init_packet(&pkt);
-
-	/* encode the image */
-	ret = avcodec_encode_video2(c, &pkt, frame, &got_packet);
-	if (ret < 0) {
-		UE_LOG(LogTemp,Error,TEXT( "Error encoding video frame:\n"));
-		return 1;
-	}
-
-	if (got_packet) {
-		ret = write_frame(oc, &c->time_base, ost->st, &pkt);
-	}
-	else {
-		ret = 0;
-	}
-
-	if (ret < 0) {
-		UE_LOG(LogTemp, Error,TEXT( "Error while writing video frame: \n"));
-		return 1;
-	}
-
-	return (frame || got_packet) ? 0 : 1;
-}
-
- void close_stream(AVFormatContext *oc, OutputStream *ost)
-{
-	avcodec_free_context(&ost->enc);
-	av_frame_free(&ost->frame);
-	av_frame_free(&ost->tmp_frame);
-	sws_freeContext(ost->sws_ctx);
-	swr_free(&ost->swr_ctx);
-}
-
-FFMuxer::~FFMuxer()
-{
-	Release();
-}
-
-void FFMuxer::Initialize(int32 Width, int32 Height)
-{
-	if (!initialized)
-	{
-		initialized = true;
-		width = Width;
-		height = Height;
-
-		/* Initialize libavcodec, and register all codecs and formats. */
-		av_register_all();
-
-		filename = "assets/audio/Test.mp4";
-
-		/* allocate the output media context */
-		avformat_alloc_output_context2(&oc, NULL, NULL, filename);
-		if (!oc) {
-			UE_LOG(LogTemp,Warning,TEXT("Could not deduce output format from file extension: using MPEG."));
-			avformat_alloc_output_context2(&oc, NULL, "mpeg", filename);
-		}
-		if (!oc)
-			return;
-
-		fmt = oc->oformat;
-
-		/* Add the audio and video streams using the default format codecs
-		* and initialize the codecs. */
-		if (fmt->video_codec != AV_CODEC_ID_NONE) {
-			AddVideoStream(fmt->video_codec);
-			have_video = 1;
-			encode_video = 1;
-		}
-		if (fmt->audio_codec != AV_CODEC_ID_NONE) {
-			AddAudioStream(fmt->audio_codec);
-			have_audio = 1;
-			encode_audio = 1;
-		}
-
-		/* Now that all the parameters are set, we can open the audio and
-		* video codecs and allocate the necessary encode buffers. */
-		if (have_video)
-			open_video(oc, video_codec, video_st, opt);
-
-		if (have_audio)
-			open_audio(oc, audio_codec, audio_st, opt);
-
-		av_dump_format(oc, 0, filename, 1);
-
-		/* open the output file, if needed */
-		if (!(fmt->flags & AVFMT_NOFILE))
-		{
-			ret = avio_open(&oc->pb, filename, AVIO_FLAG_WRITE);
-			if (ret < 0) {
-				UE_LOG(LogTemp,Warning,TEXT("Could not open '%s'"), filename);
-				return;
-			}
-		}
-
-		/* Write the stream header, if any. */
-		ret = avformat_write_header(oc, &opt);
-		if (ret < 0) {
-			UE_LOG(LogTemp,Warning,TEXT("Error occurred when opening output file"));
-			return;
-		}
-
-		
-		CanStream = true;		
-	}
-}
-
-bool FFMuxer::IsInitialized() const
-{
-	return initialized;
-}
-
-bool FFMuxer::IsReadyToStream() const
-{
-	return CanStream;
-}
-
-void FFMuxer::Mux(FViewport * Viewport)
-{
-	while (encode_video || encode_audio) {
-		/* select the stream to encode */
-
-		UE_LOG(LogTemp, Warning, TEXT("AudioPTS:%d , VideoPTS %d"), audio_st->next_pts, video_st->next_pts);
-
-		int DecodeTime = av_compare_ts(video_st->next_pts, video_st->enc->time_base, audio_st->next_pts, audio_st->enc->time_base);
-		if (encode_video && (!encode_audio || DecodeTime <= 0)) {
-			encode_video = !write_video_frame(oc, video_st);
-		}
-		else {
-			encode_audio = !write_audio_frame(oc, audio_st);
-		}
-	}
-}
-
-void FFMuxer::Release()
-{
-	/* Write the trailer, if any. The trailer must be written before you
-	* close the CodecContexts open when you wrote the header; otherwise
-	* av_write_trailer() may try to use memory that was freed on
-	* av_codec_close(). */
-	av_write_trailer(oc);
-
-	/* Close each codec. */
-	if (have_video)
-		close_stream(oc, video_st);
-	if (have_audio)
-		close_stream(oc, audio_st);
-
-	if (!(fmt->flags & AVFMT_NOFILE))
-		/* Close the output file. */
-		avio_closep(&oc->pb);
-
-	/* free the stream */
-	avformat_free_context(oc);
-}
-
-void FFMuxer::AddVideoStream(enum AVCodecID codec_id)
-{
-	AVCodecContext *c;
-	/* find the encoder */
-	video_codec = avcodec_find_encoder(codec_id);
-	if (!video_codec) {
-		UE_LOG(LogTemp, Error, TEXT("Could not find encoder for"));
-		return;
-	}
-
-	video_st->st = avformat_new_stream(oc, video_codec);
-	if (!video_st->st) {
-		UE_LOG(LogTemp, Error, TEXT("Could not allocate stream"));
-		return;
-	}
-	video_st->st->id = oc->nb_streams - 1;
-	c = avcodec_alloc_context3(video_codec);
-	if (!c) {
-		UE_LOG(LogTemp, Error, TEXT("Could not alloc an encoding context"));
-		return;
-	}
-	video_st->enc = c;
-
-	c->codec_id = codec_id;
-	c->bit_rate = 400000;
-	/* Resolution must be a multiple of two. */
-	c->width = 352;
-	c->height = 288;
-	/* timebase: This is the fundamental unit of time (in seconds) in terms
-	* of which frame timestamps are represented. For fixed-fps content,
-	* timebase should be 1/framerate and timestamp increments should be
-	* identical to 1. */
-	video_st->st->time_base = GetRational(1, STREAM_FRAME_RATE);
-	c->time_base = video_st->st->time_base;
-
-	c->gop_size = 12; /* emit one intra frame every twelve frames at most */
-	c->pix_fmt = STREAM_PIX_FMT;
-	if (c->codec_id == AV_CODEC_ID_MPEG2VIDEO) {
-		/* just for testing, we also add B-frames */
-		c->max_b_frames = 2;
-	}
-	if (c->codec_id == AV_CODEC_ID_MPEG1VIDEO) {
-		/* Needed to avoid using macroblocks in which some coeffs overflow.
-		* This does not happen with normal video, it just happens here as
-		* the motion of the chroma plane does not match the luma plane. */
-		c->mb_decision = 2;
-	}
-
-	/* Some formats want stream headers to be separate. */
-	if (oc->oformat->flags & AVFMT_GLOBALHEADER)
-		c->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-
-}
-
-void FFMuxer::AddAudioStream(AVCodecID codec_id)
-{
-	AVCodecContext *c;
-	int i;
-
-	/* find the encoder */
-	audio_codec = avcodec_find_encoder(codec_id);
-	if (!audio_codec) {
-		UE_LOG(LogTemp, Error, TEXT("Could not find encoder for"));
-		return;
-	}
-
-	audio_st->st = avformat_new_stream(oc, NULL);
-	if (!video_st->st) {
-		UE_LOG(LogTemp, Error, TEXT("Could not allocate stream"));
-		return;
-	}
-	audio_st->st->id = oc->nb_streams - 1;
-	c = avcodec_alloc_context3(audio_codec);
-	if (!c) {
-		UE_LOG(LogTemp, Error, TEXT("Could not alloc an encoding context"));
-		return;
-	}
-	audio_st->enc = c;
-
-	c->sample_fmt = audio_codec->sample_fmts ? audio_codec->sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
-	c->bit_rate = 64000;
-	c->sample_rate = 44100;
-	if (audio_codec->supported_samplerates) {
-		c->sample_rate = audio_codec->supported_samplerates[0];
-		for (i = 0; audio_codec->supported_samplerates[i]; i++) {
-			if (audio_codec->supported_samplerates[i] == 44100)
-				c->sample_rate = 44100;
-		}
-	}
-	c->channels = av_get_channel_layout_nb_channels(c->channel_layout);
-	c->channel_layout = AV_CH_LAYOUT_STEREO;
-	if (audio_codec->channel_layouts) {
-		c->channel_layout = audio_codec->channel_layouts[0];
-		for (i = 0; audio_codec->channel_layouts[i]; i++) {
-			if (audio_codec->channel_layouts[i] == AV_CH_LAYOUT_STEREO)
-				c->channel_layout = AV_CH_LAYOUT_STEREO;
-		}
-	}
-	c->channels = av_get_channel_layout_nb_channels(c->channel_layout);
-	audio_st->st->time_base = GetRational(1, c->sample_rate);
 }
