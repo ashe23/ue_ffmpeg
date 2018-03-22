@@ -55,20 +55,21 @@ private:
 	void OpenAudio();
 	AVFrame* AllocPicture(enum AVPixelFormat pix_fmt, int w, int h);
 	AVFrame* AllocAudioFrame(enum AVSampleFormat sample_fmt, uint64_t channel_layout, int sample_rate, int nb_samples);
-	int WriteVideoFrame();
+	int WriteVideoFrame(FViewport * Viewport);
 	int WriteAudioFrame();
 	int WriteFrame(const AVRational *time_base, AVStream *st, AVPacket *pkt);
 
-	AVFrame* GetVideoFrame();
+	AVFrame* GetVideoFrame(FViewport * Viewport);
 	AVFrame* GetAudioFrame();
 
 	void CloseVideoStream();
 	void CloseAudioStream();
 
-	void FillYUVImage(AVFrame *pict, int frame_index, int width, int height);
+	void FillYUVImage(FViewport * Viewport, AVFrame* Frame);
 private:
 	bool initialized = false;
 	bool CanStream = false;
+	bool MuxingLoopStarted = false;
 	int width;
 	int height;
 	const char *filename = "C:/screen/test.mp4";

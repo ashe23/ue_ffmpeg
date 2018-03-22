@@ -83,30 +83,7 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 		{
 			PrintEngineError("Error occurred when opening output file");
 			return;
-		}		
-
-		while (encode_video || encode_audio)
-		{
-			/* select the stream to encode */
-
-			UE_LOG(LogTemp, Warning, TEXT("AudioPTS: %d , VideoPTS: %d"), audio_st.next_pts, video_st.next_pts);
-
-			int DecodeTime = av_compare_ts(video_st.next_pts, video_st.enc->time_base, audio_st.next_pts, audio_st.enc->time_base);
-			if (encode_video && (!encode_audio || DecodeTime <= 0))
-			{
-				encode_video = !WriteVideoFrame();
-			}
-			else
-			{
-				encode_audio = !WriteAudioFrame();
-			}
-		}
-
-		/* Write the trailer, if any. The trailer must be written before you
-		* close the CodecContexts open when you wrote the header; otherwise
-		* av_write_trailer() may try to use memory that was freed on
-		* av_codec_close(). */
-		av_write_trailer(FormatContext);
+		}				
 		
 		CanStream = true;		
 		PrintEngineWarning("Initializing success");
@@ -125,28 +102,38 @@ bool FFMuxer::IsReadyToStream() const
 
 void FFMuxer::Mux(FViewport * Viewport)
 {
-	while (encode_video || encode_audio)
+	if (CanStream)
 	{
-		/* select the stream to encode */
-
-		UE_LOG(LogTemp,Warning,TEXT("AudioPTS: %d , VideoPTS: %d"), audio_st.next_pts, video_st.next_pts);
-
-		int DecodeTime = av_compare_ts(video_st.next_pts, video_st.enc->time_base, audio_st.next_pts, audio_st.enc->time_base);
-		if (encode_video && (!encode_audio || DecodeTime <= 0)) 
+		if (!MuxingLoopStarted)
 		{
-			encode_video = !WriteVideoFrame();
-		}
-		else
-		{
-			encode_audio = !WriteAudioFrame();
+			MuxingLoopStarted = true;
+
+			while (encode_video || encode_audio)
+			{
+				/* select the stream to encode */
+
+				UE_LOG(LogTemp, Warning, TEXT("AudioPTS: %d , VideoPTS: %d"), audio_st.next_pts, video_st.next_pts);
+
+				int DecodeTime = av_compare_ts(video_st.next_pts, video_st.enc->time_base, audio_st.next_pts, audio_st.enc->time_base);
+				if (encode_video && (!encode_audio || DecodeTime <= 0)) 
+				{
+					encode_video = !WriteVideoFrame(Viewport);
+				}
+				else
+				{
+					encode_audio = !WriteAudioFrame();
+				}
+			}
+
+			CanStream = false;
+
+			/* Write the trailer, if any. The trailer must be written before you
+			* close the CodecContexts open when you wrote the header; otherwise
+			* av_write_trailer() may try to use memory that was freed on
+			* av_codec_close(). */
+			av_write_trailer(FormatContext);	
 		}
 	}
-
-	/* Write the trailer, if any. The trailer must be written before you
-	* close the CodecContexts open when you wrote the header; otherwise
-	* av_write_trailer() may try to use memory that was freed on
-	* av_codec_close(). */
-	av_write_trailer(FormatContext);	
 }
 
 void FFMuxer::Release()
@@ -332,16 +319,21 @@ void FFMuxer::OpenVideo()
 	/* If the output format is not YUV420P, then a temporary YUV420P
 	* picture is needed too. It is then converted to the required
 	* output format. */
-	video_st.tmp_frame = nullptr;
-	if (video_st.enc->pix_fmt != AV_PIX_FMT_YUV420P) 
+	video_st.tmp_frame = AllocPicture(video_st.enc->pix_fmt, video_st.enc->width, video_st.enc->height);
+	if (!video_st.tmp_frame)
 	{
-		video_st.tmp_frame = AllocPicture(AV_PIX_FMT_YUV420P, video_st.enc->width, video_st.enc->height);
-		if (!video_st.tmp_frame)
-		{
-			PrintEngineError("Could not allocate temporary picture");
-			return;
-		}
+		PrintEngineError("Could not allocate video frame");
+		return;
 	}
+	//if (video_st.enc->pix_fmt != AV_PIX_FMT_YUV420P) 
+	//{
+	//	video_st.tmp_frame = AllocPicture(AV_PIX_FMT_YUV420P, video_st.enc->width, video_st.enc->height);
+	//	if (!video_st.tmp_frame)
+	//	{
+	//		PrintEngineError("Could not allocate temporary picture");
+	//		return;
+	//	}
+	//}
 
 	/* copy the stream parameters to the muxer */
 	ret = avcodec_parameters_from_context(video_st.st->codecpar, video_st.enc);
@@ -470,14 +462,14 @@ AVFrame * FFMuxer::AllocAudioFrame(AVSampleFormat sample_fmt, uint64_t channel_l
 	return frame;
 }
 
-int FFMuxer::WriteVideoFrame()
+int FFMuxer::WriteVideoFrame(FViewport * Viewport)
 {
 	int ret;
 	AVFrame *frame;
 	int got_packet = 0;
 	AVPacket pkt = { 0 };
 
-	frame = GetVideoFrame();
+	frame = GetVideoFrame(Viewport);
 
 	av_init_packet(&pkt);
 
@@ -486,7 +478,8 @@ int FFMuxer::WriteVideoFrame()
 	if (ret < 0)
 	{
 		PrintEngineError("Error encoding video frame");
-		return 0;
+		CanStream = false;
+		return -1;
 	}
 
 	if (got_packet)
@@ -495,7 +488,7 @@ int FFMuxer::WriteVideoFrame()
 	}
 	else
 	{
-		ret = 0;
+		ret = -1;
 	}
 
 	if (ret < 0) 
@@ -532,16 +525,18 @@ int FFMuxer::WriteAudioFrame()
 		ret = av_frame_make_writable(audio_st.frame);
 		if (ret < 0)
 		{
+			CanStream = false;
 			PrintEngineError("Cant make audio frame writable");
-			return 0;
+			return -1;
 		}
 
 		/* convert to destination format */
 		ret = swr_convert(audio_st.swr_ctx,audio_st.frame->data, dst_nb_samples,(const uint8_t **)frame->data, frame->nb_samples);
 		if (ret < 0) 
 		{
+			CanStream = false;
 			PrintEngineError("Error while converting");
-			return 0;
+			return -1;
 		}
 		frame = audio_st.frame;
 
@@ -552,8 +547,9 @@ int FFMuxer::WriteAudioFrame()
 	ret = avcodec_encode_audio2(audio_st.enc, &pkt, frame, &got_packet);
 	if (ret < 0) 
 	{
+		CanStream = false;
 		PrintEngineError("Error encoding audio frame");
-		return 0;
+		return -1;
 	}
 
 	if (got_packet) 
@@ -561,8 +557,9 @@ int FFMuxer::WriteAudioFrame()
 		ret = WriteFrame(&audio_st.enc->time_base, audio_st.st, &pkt);
 		if (ret < 0) 
 		{
+			CanStream = false;
 			PrintEngineError("Error while writing audio frame");
-			return 0;
+			return -1;
 		}
 	}
 
@@ -579,11 +576,12 @@ int FFMuxer::WriteFrame(const AVRational * time_base, AVStream * st, AVPacket * 
 	return av_interleaved_write_frame(FormatContext, pkt);
 }
 
-AVFrame * FFMuxer::GetVideoFrame()
+AVFrame * FFMuxer::GetVideoFrame(FViewport * Viewport)
 {
 	/* check if we want to generate more frames */
 	if (av_compare_ts(video_st.next_pts, video_st.enc->time_base, STREAM_DURATION, GetRational(1, 1)) >= 0)
 	{
+		CanStream = false;
 		return nullptr;
 	}
 
@@ -595,29 +593,18 @@ AVFrame * FFMuxer::GetVideoFrame()
 		return nullptr;
 	}
 
-	if (video_st.enc->pix_fmt != AV_PIX_FMT_YUV420P)
+	video_st.sws_ctx = sws_getContext(video_st.enc->width, video_st.enc->height,
+		AV_PIX_FMT_RGBA,
+		video_st.enc->width, video_st.enc->height,
+		video_st.enc->pix_fmt,
+		SCALE_FLAGS, NULL, NULL, NULL);
+	if (!video_st.sws_ctx)
 	{
-		/* as we only generate a YUV420P picture, we must convert it
-		* to the codec pixel format if needed */
-		if (!video_st.sws_ctx)
-		{
-			video_st.sws_ctx = sws_getContext(video_st.enc->width, video_st.enc->height,
-				AV_PIX_FMT_YUV420P,
-				video_st.enc->width, video_st.enc->height,
-				video_st.enc->pix_fmt,
-				SCALE_FLAGS, NULL, NULL, NULL);
-			if (!video_st.sws_ctx)
-			{
-				PrintEngineError("Could not initialize the conversion context");
-				return nullptr;
-			}
-		}
-		FillYUVImage(video_st.tmp_frame, video_st.next_pts, video_st.enc->width, video_st.enc->height);
-		sws_scale(video_st.sws_ctx, (const uint8_t * const *)video_st.tmp_frame->data, video_st.tmp_frame->linesize,0, video_st.enc->height, video_st.frame->data, video_st.frame->linesize);
+		PrintEngineError("Could not initialize the conversion context");
+		return nullptr;
 	}
-	else {
-		FillYUVImage(video_st.frame, video_st.next_pts, video_st.enc->width, video_st.enc->height);
-	}
+
+	FillYUVImage(Viewport, video_st.frame); // todo rename	
 
 	video_st.frame->pts = video_st.next_pts++;
 
@@ -632,6 +619,7 @@ AVFrame * FFMuxer::GetAudioFrame()
 	/* check if we want to generate more frames */
 	if (av_compare_ts(audio_st.next_pts, audio_st.enc->time_base, STREAM_DURATION, GetRational(1, 1)) >= 0)
 	{
+		CanStream = false;
 		return nullptr;
 	}
 
@@ -670,22 +658,45 @@ void FFMuxer::CloseAudioStream()
 	swr_free(&audio_st.swr_ctx);
 }
 
-void FFMuxer::FillYUVImage(AVFrame * pict, int frame_index, int width, int height)
+void FFMuxer::FillYUVImage(FViewport* Viewport, AVFrame* Frame)
 {
-	int x, y, i;
-
-	i = frame_index;
-
-	/* Y */
-	for (y = 0; y < height; y++)
-		for (x = 0; x < width; x++)
-			pict->data[0][y * pict->linesize[0] + x] = x + y + i * 3;
-
-	/* Cb and Cr */
-	for (y = 0; y < height / 2; y++) {
-		for (x = 0; x < width / 2; x++) {
-			pict->data[1][y * pict->linesize[1] + x] = 128 + y + i * 2;
-			pict->data[2][y * pict->linesize[2] + x] = 64 + x + i * 5;
-		}
+	if (!Viewport)
+	{
+		return;
 	}
+
+	FIntPoint ViewportSize = Viewport->GetSizeXY();
+
+	// Reading actual pixel data of single frame from viewport
+	TArray<FColor> ColorBuffer;
+	TArray<uint8> SingleFrameBuffer;
+
+	if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(),
+		FIntRect(0, 0, ViewportSize.X, ViewportSize.Y)))
+	{
+		PrintEngineError("Cannot read from viewport.Aborting");
+		return;
+	}
+
+	// converting from TArray to const uint8*
+	SingleFrameBuffer.Empty();
+	SingleFrameBuffer.SetNum(ColorBuffer.Num() * 4);
+	uint8* DestPtr = nullptr;
+	for (auto i = 0; i < ColorBuffer.Num(); i++)
+	{
+		DestPtr = &SingleFrameBuffer[i * 4];
+		auto SrcPtr = ColorBuffer[i];
+		*DestPtr++ = SrcPtr.R;
+		*DestPtr++ = SrcPtr.G;
+		*DestPtr++ = SrcPtr.B;
+		*DestPtr++ = SrcPtr.A;
+	}
+
+	// filling frame with actual data
+	int InLineSize[1];
+	InLineSize[0] = 4 * video_st.enc->width;
+	uint8* inData[1] = { SingleFrameBuffer.GetData() };
+
+	// todo:ashe23 crashes on scale
+	sws_scale(video_st.sws_ctx, inData, InLineSize, 0, video_st.enc->height, Frame->data, Frame->linesize);
 }

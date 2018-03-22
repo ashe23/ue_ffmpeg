@@ -26,7 +26,6 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 		return;
 	}
 
-
 	if (!Muxer)
 	{
 		FIntPoint ViewportSize = Viewport->GetSizeXY();
@@ -36,7 +35,7 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 
 	if (Muxer->IsReadyToStream())
 	{		
-		//Muxer->Mux(Viewport);
+		Muxer->Mux(Viewport);
 	}
 	
 	// initialize FFmpeg stuff
@@ -314,7 +313,6 @@ void UStreamGV::ff_encode_and_write_frame(FViewport * Viewport)
 	uint8* inData[1] = { SingleFrameBuffer.GetData() };
 	sws_scale(swsctx, inData, InLineSize, 0, out_codec_ctx->height, frame->data, frame->linesize);
 	frame->pts += av_rescale_q(1, out_codec_ctx->time_base, out_stream->time_base);
-
 
 	// writing frame
 	ff_write_frame();
