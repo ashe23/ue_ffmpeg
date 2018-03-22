@@ -73,6 +73,10 @@ private:
 	int width;
 	int height;
 	const char *filename = "C:/screen/test.mp4";
+	FString AudioFileName = "Ambient1.wav";
+	TArray<uint8> AudioFileBuffer;
+	TArray<uint16> Buf;
+
 	/// remove later
 	AVFormatContext *FormatContext = nullptr;
 	AVOutputFormat* OutputFormat = nullptr;

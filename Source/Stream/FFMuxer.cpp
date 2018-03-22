@@ -2,7 +2,7 @@
 
 #include "FFMuxer.h"
 
-#define STREAM_DURATION   10.0
+#define STREAM_DURATION   5.0
 #define STREAM_FRAME_RATE 30 /* 25 images/s */
 #define STREAM_PIX_FMT    AV_PIX_FMT_YUV420P /* default pix_fmt */
 
@@ -85,6 +85,22 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 			return;
 		}				
 		
+		// reading audio data
+		FString AudioFilePath = FPaths::ProjectDir() + "/ThirdParty/audio/" + AudioFileName;
+		if (FFileHelper::LoadFileToArray(AudioFileBuffer, *AudioFilePath))
+		{
+			PrintEngineWarning("AudioFile loaded successfully");
+
+			AudioFileBuffer.RemoveAt(0, 44);
+
+			UE_LOG(LogTemp, Warning, TEXT("AudioBufferSize: %d"), AudioFileBuffer.Num());
+		}
+		else
+		{
+			PrintEngineError("Cant open Audio FIle");
+			return;
+		}
+
 		CanStream = true;		
 		PrintEngineWarning("Initializing success");
 	}
@@ -623,15 +639,19 @@ AVFrame * FFMuxer::GetAudioFrame()
 		return nullptr;
 	}
 
-	for (j = 0; j <audio_st.tmp_frame->nb_samples; j++)
+
+	// reading data from file
+	for (j = 0; j < audio_st.tmp_frame->nb_samples; j++)
 	{
-		v = (int)(sin(audio_st.t) * 10000);
+		//v = (int)(sin(audio_st.t) * 10000);
+		v = AudioFileBuffer[j];
 		for (i = 0; i < audio_st.enc->channels; i++)
 		{
 			*q++ = v;
 		}
 		audio_st.t += audio_st.tincr;
 		audio_st.tincr += audio_st.tincr2;
+		AudioFileBuffer.RemoveAt(0, 1);
 	}
 
 	audio_st.tmp_frame->pts = audio_st.next_pts;
