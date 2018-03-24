@@ -2,7 +2,7 @@
 
 #include "FFMuxer.h"
 
-#define STREAM_DURATION   5.0
+#define STREAM_DURATION   3.0
 #define STREAM_FRAME_RATE 30 /* 25 images/s */
 #define STREAM_PIX_FMT    AV_PIX_FMT_YUV420P /* default pix_fmt */
 
@@ -17,7 +17,7 @@
 
 FFMuxer::~FFMuxer()
 {
-	Release();
+	//Release();
 }
 
 void FFMuxer::Initialize(int32 Width, int32 Height)
@@ -273,7 +273,8 @@ void FFMuxer::AddAudioStream()
 	}
 
 	// set params
-	audio_st.enc->sample_fmt = AudioCodec->sample_fmts ? AudioCodec->sample_fmts[0] : AV_SAMPLE_FMT_FLTP;
+	audio_st.enc->sample_fmt = AudioCodec->sample_fmts ? AudioCodec->sample_fmts[0] : AV_SAMPLE_FMT_S16;
+	//audio_st.enc->sample_fmt = AV_SAMPLE_FMT_S16;
 	audio_st.enc->bit_rate = 64000;
 	audio_st.enc->sample_rate = 44100;
 	if (AudioCodec->supported_samplerates) 
@@ -390,6 +391,10 @@ void FFMuxer::OpenAudio()
 
 	audio_st.frame = AllocAudioFrame(audio_st.enc->sample_fmt, audio_st.enc->channel_layout, audio_st.enc->sample_rate, nb_samples);
 	audio_st.tmp_frame = AllocAudioFrame(AV_SAMPLE_FMT_S16, audio_st.enc->channel_layout, audio_st.enc->sample_rate, nb_samples);
+	
+	//audio_st.audio_buffer_size = av_samples_get_buffer_size(nullptr, audio_st.enc->channels, audio_st.enc->frame_size, audio_st.enc->sample_fmt, 1);
+	//audio_st.frame_buf = (uint8*)av_malloc(audio_st.audio_buffer_size);
+	//avcodec_fill_audio_frame(audio_st.tmp_frame, audio_st.enc->channels, audio_st.enc->sample_fmt, (const uint8_t*)audio_st.tmp_frame, audio_st.audio_buffer_size, 1);
 
 	/* copy the stream parameters to the muxer */
 	ret = avcodec_parameters_from_context(audio_st.st->codecpar, audio_st.enc);
@@ -547,7 +552,7 @@ int FFMuxer::WriteAudioFrame()
 		}
 
 		/* convert to destination format */
-		ret = swr_convert(audio_st.swr_ctx,audio_st.frame->data, dst_nb_samples,(const uint8_t **)frame->data, frame->nb_samples);
+		ret = swr_convert(audio_st.swr_ctx, audio_st.frame->data, dst_nb_samples,(const uint8_t **)frame->data, frame->nb_samples);
 		if (ret < 0) 
 		{
 			CanStream = false;
@@ -631,27 +636,28 @@ AVFrame * FFMuxer::GetAudioFrame()
 {
 	int j, i, v;
 	int16_t *q = (int16_t*)audio_st.tmp_frame->data[0];
-
+	
 	/* check if we want to generate more frames */
 	if (av_compare_ts(audio_st.next_pts, audio_st.enc->time_base, STREAM_DURATION, GetRational(1, 1)) >= 0)
 	{
 		CanStream = false;
 		return nullptr;
 	}
-
-
-	// reading data from file
+	
+	/*memcpy(audio_st.tmp_frame->data[0], AudioFileBuffer.GetData(), audio_st.audio_buffer_size);
+	AudioFileBuffer.RemoveAt(0, audio_st.audio_buffer_size);
+	
+	UE_LOG(LogTemp, Warning, TEXT("Buffer size:%d"), AudioFileBuffer.Num());*/
+	// generating 1 sample of audio
 	for (j = 0; j < audio_st.tmp_frame->nb_samples; j++)
 	{
-		//v = (int)(sin(audio_st.t) * 10000);
-		v = AudioFileBuffer[j];
+		v = (int)(sin(audio_st.t) * 10000);
 		for (i = 0; i < audio_st.enc->channels; i++)
 		{
 			*q++ = v;
 		}
 		audio_st.t += audio_st.tincr;
 		audio_st.tincr += audio_st.tincr2;
-		AudioFileBuffer.RemoveAt(0, 1);
 	}
 
 	audio_st.tmp_frame->pts = audio_st.next_pts;

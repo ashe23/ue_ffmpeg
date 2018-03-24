@@ -32,6 +32,9 @@ struct OutputStream {
 
 	SwsContext *sws_ctx = nullptr;
 	SwrContext *swr_ctx = nullptr;
+
+	uint8* frame_buf = nullptr;
+	int audio_buffer_size = 0;
 };
 
 /**
@@ -73,7 +76,7 @@ private:
 	int width;
 	int height;
 	const char *filename = "C:/screen/test.mp4";
-	FString AudioFileName = "Ambient1.wav";
+	FString AudioFileName = "input.pcm";
 	TArray<uint8> AudioFileBuffer;
 	TArray<uint16> Buf;
 
