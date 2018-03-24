@@ -7,6 +7,8 @@
 #include "Runtime/Core/Public/Misc/Paths.h"
 #include "Runtime/Engine/Public/UnrealClient.h"
 #include <string>
+#include <iostream>
+#include "Runtime/Core/Public/HAL/PlatformFilemanager.h"
 #include "Runtime/Core/Public/Misc/FileHelper.h"
 #include "Runtime/Core/Public/Misc/Paths.h"
 
@@ -76,10 +78,10 @@ private:
 	int width;
 	int height;
 	const char *filename = "C:/screen/test.mp4";
-	FString AudioFileName = "input.pcm";
+	FString AudioFileName = "song1.wav";
 	TArray<uint8> AudioFileBuffer;
 	TArray<uint16> Buf;
-
+	int64 offset = 44;
 	/// remove later
 	AVFormatContext *FormatContext = nullptr;
 	AVOutputFormat* OutputFormat = nullptr;

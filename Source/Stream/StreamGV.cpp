@@ -43,7 +43,7 @@ void UStreamGV::BeginDestroy()
 
 	if (Muxer)
 	{
-		Muxer->Release();
+		//Muxer->Release();
 	}
 	//ff_release_resources(); // todo:ashe23 crushes, handle resource managment
 	//todo:ashe23 here we realeasing Buffer stuff

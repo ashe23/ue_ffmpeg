@@ -2,7 +2,7 @@
 
 #include "FFMuxer.h"
 
-#define STREAM_DURATION   3.0
+#define STREAM_DURATION   30.0
 #define STREAM_FRAME_RATE 30 /* 25 images/s */
 #define STREAM_PIX_FMT    AV_PIX_FMT_YUV420P /* default pix_fmt */
 
@@ -29,6 +29,7 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 		width = Width;
 		height = Height;
 
+		avcodec_register_all();
 		av_register_all();
 
 		avformat_alloc_output_context2(&FormatContext, nullptr, nullptr, filename);
@@ -86,7 +87,28 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 		}				
 		
 		// reading audio data
+		///
 		FString AudioFilePath = FPaths::ProjectDir() + "/ThirdParty/audio/" + AudioFileName;
+		//IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+
+		//int32 MyInteger = 0;
+		//IFileHandle* FileHandle = PlatformFile.OpenRead(*AudioFilePath);
+		//if (FileHandle)
+		//{
+		//	// Create a pointer to MyInteger
+		//	int32* IntPointer = &MyInteger;
+		//	// Reinterpret the pointer for the Read function
+		//	uint8* ByteBuffer = reinterpret_cast<uint8*>(IntPointer);
+
+		//	// Read the integer from file into our reinterpret pointer
+		//	FileHandle->Read(ByteBuffer, sizeof(int32));			
+
+		//	// Close the file again
+		//	delete FileHandle;
+		//}
+
+
+		// todo remove this part
 		if (FFileHelper::LoadFileToArray(AudioFileBuffer, *AudioFilePath))
 		{
 			PrintEngineWarning("AudioFile loaded successfully");
@@ -273,11 +295,12 @@ void FFMuxer::AddAudioStream()
 	}
 
 	// set params
-	audio_st.enc->sample_fmt = AudioCodec->sample_fmts ? AudioCodec->sample_fmts[0] : AV_SAMPLE_FMT_S16;
-	//audio_st.enc->sample_fmt = AV_SAMPLE_FMT_S16;
-	audio_st.enc->bit_rate = 64000;
+	//audio_st.enc->sample_fmt = AudioCodec->sample_fmts ? AudioCodec->sample_fmts[0] : AV_SAMPLE_FMT_S16P;
+	audio_st.enc->sample_fmt = AV_SAMPLE_FMT_FLTP;
+	//audio_st.enc->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL;
+	audio_st.enc->bit_rate = 192000;
 	audio_st.enc->sample_rate = 44100;
-	if (AudioCodec->supported_samplerates) 
+	/*if (AudioCodec->supported_samplerates) 
 	{
 		audio_st.enc->sample_rate = AudioCodec->supported_samplerates[0];
 		for (i = 0; AudioCodec->supported_samplerates[i]; i++) 
@@ -287,7 +310,7 @@ void FFMuxer::AddAudioStream()
 				audio_st.enc->sample_rate = 44100;
 			}
 		}
-	}
+	}*/
 	audio_st.enc->channels = av_get_channel_layout_nb_channels(audio_st.enc->channel_layout);
 	audio_st.enc->channel_layout = AV_CH_LAYOUT_STEREO;
 	if (AudioCodec->channel_layouts) 
@@ -390,11 +413,7 @@ void FFMuxer::OpenAudio()
 	}
 
 	audio_st.frame = AllocAudioFrame(audio_st.enc->sample_fmt, audio_st.enc->channel_layout, audio_st.enc->sample_rate, nb_samples);
-	audio_st.tmp_frame = AllocAudioFrame(AV_SAMPLE_FMT_S16, audio_st.enc->channel_layout, audio_st.enc->sample_rate, nb_samples);
-	
-	//audio_st.audio_buffer_size = av_samples_get_buffer_size(nullptr, audio_st.enc->channels, audio_st.enc->frame_size, audio_st.enc->sample_fmt, 1);
-	//audio_st.frame_buf = (uint8*)av_malloc(audio_st.audio_buffer_size);
-	//avcodec_fill_audio_frame(audio_st.tmp_frame, audio_st.enc->channels, audio_st.enc->sample_fmt, (const uint8_t*)audio_st.tmp_frame, audio_st.audio_buffer_size, 1);
+	audio_st.tmp_frame = AllocAudioFrame(AV_SAMPLE_FMT_S16, audio_st.enc->channel_layout, audio_st.enc->sample_rate, nb_samples);	
 
 	/* copy the stream parameters to the muxer */
 	ret = avcodec_parameters_from_context(audio_st.st->codecpar, audio_st.enc);
@@ -536,7 +555,9 @@ int FFMuxer::WriteAudioFrame()
 	{
 		/* convert samples from native format to destination codec format, using the resampler */
 		/* compute destination number of samples */
-		dst_nb_samples = av_rescale_rnd(swr_get_delay(audio_st.swr_ctx, audio_st.enc->sample_rate) + frame->nb_samples, audio_st.enc->sample_rate, audio_st.enc->sample_rate, AV_ROUND_UP);
+		//auto a = swr_get_delay(audio_st.swr_ctx, audio_st.enc->sample_rate);
+		//UE_LOG(LogTemp, Warning, TEXT("A:%d"), a);
+		dst_nb_samples = av_rescale_rnd(frame->nb_samples, audio_st.enc->sample_rate, audio_st.enc->sample_rate, AV_ROUND_UP);
 		av_assert0(dst_nb_samples == frame->nb_samples);
 
 		/* when we pass a frame to the encoder, it may keep a reference to it
@@ -634,30 +655,43 @@ AVFrame * FFMuxer::GetVideoFrame(FViewport * Viewport)
 
 AVFrame * FFMuxer::GetAudioFrame()
 {
-	int j, i, v;
-	int16_t *q = (int16_t*)audio_st.tmp_frame->data[0];
-	
 	/* check if we want to generate more frames */
 	if (av_compare_ts(audio_st.next_pts, audio_st.enc->time_base, STREAM_DURATION, GetRational(1, 1)) >= 0)
 	{
 		CanStream = false;
 		return nullptr;
 	}
-	
-	/*memcpy(audio_st.tmp_frame->data[0], AudioFileBuffer.GetData(), audio_st.audio_buffer_size);
-	AudioFileBuffer.RemoveAt(0, audio_st.audio_buffer_size);
-	
-	UE_LOG(LogTemp, Warning, TEXT("Buffer size:%d"), AudioFileBuffer.Num());*/
-	// generating 1 sample of audio
-	for (j = 0; j < audio_st.tmp_frame->nb_samples; j++)
+
+	int16 *q = (int16*)audio_st.tmp_frame->data[0];
+	int j, i;
+	FString AudioFilePath = FPaths::ProjectDir() + "/ThirdParty/audio/" + AudioFileName;
+	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+
+	int MyInteger = 0;
+	IFileHandle* FileHandle = PlatformFile.OpenRead(*AudioFilePath);
+	if (FileHandle)
 	{
-		v = (int)(sin(audio_st.t) * 10000);
-		for (i = 0; i < audio_st.enc->channels; i++)
+		// Create a pointer to MyInteger
+		int* IntPointer = &MyInteger;
+		// Reinterpret the pointer for the Read function
+		uint8* ByteBuffer = reinterpret_cast<uint8*>(IntPointer);
+
+		for (j = 0; j < audio_st.tmp_frame->nb_samples; j++)
 		{
-			*q++ = v;
+			FileHandle->Seek(offset);
+			// Read the integer from file into our reinterpret pointer
+			FileHandle->Read(ByteBuffer, sizeof(int));
+
+			offset += sizeof(int);
+			//v = (int)(sin(audio_st.t) * 10000);
+			for (i = 0; i < audio_st.enc->channels; i++)
+			{
+				*q++ = MyInteger;
+			}
 		}
-		audio_st.t += audio_st.tincr;
-		audio_st.tincr += audio_st.tincr2;
+
+		// Close the file again
+		delete FileHandle;
 	}
 
 	audio_st.tmp_frame->pts = audio_st.next_pts;
