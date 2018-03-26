@@ -2,7 +2,7 @@
 
 #include "FFMuxer.h"
 
-#define STREAM_DURATION   30.0
+#define STREAM_DURATION   10.0
 #define STREAM_FRAME_RATE 30 /* 25 images/s */
 #define STREAM_PIX_FMT    AV_PIX_FMT_YUV420P /* default pix_fmt */
 
@@ -31,8 +31,9 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 
 		avcodec_register_all();
 		av_register_all();
+		avformat_network_init();
 
-		avformat_alloc_output_context2(&FormatContext, nullptr, nullptr, filename);
+		avformat_alloc_output_context2(&FormatContext, nullptr, "flv", filename);
 		if (!FormatContext)
 		{
 			UE_LOG(LogTemp, Error, TEXT("Cant allocate output context"));
@@ -86,43 +87,6 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 			return;
 		}				
 		
-		// reading audio data
-		///
-		FString AudioFilePath = FPaths::ProjectDir() + "/ThirdParty/audio/" + AudioFileName;
-		//IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-
-		//int32 MyInteger = 0;
-		//IFileHandle* FileHandle = PlatformFile.OpenRead(*AudioFilePath);
-		//if (FileHandle)
-		//{
-		//	// Create a pointer to MyInteger
-		//	int32* IntPointer = &MyInteger;
-		//	// Reinterpret the pointer for the Read function
-		//	uint8* ByteBuffer = reinterpret_cast<uint8*>(IntPointer);
-
-		//	// Read the integer from file into our reinterpret pointer
-		//	FileHandle->Read(ByteBuffer, sizeof(int32));			
-
-		//	// Close the file again
-		//	delete FileHandle;
-		//}
-
-
-		// todo remove this part
-		if (FFileHelper::LoadFileToArray(AudioFileBuffer, *AudioFilePath))
-		{
-			PrintEngineWarning("AudioFile loaded successfully");
-
-			AudioFileBuffer.RemoveAt(0, 44);
-
-			UE_LOG(LogTemp, Warning, TEXT("AudioBufferSize: %d"), AudioFileBuffer.Num());
-		}
-		else
-		{
-			PrintEngineError("Cant open Audio FIle");
-			return;
-		}
-
 		CanStream = true;		
 		PrintEngineWarning("Initializing success");
 	}
@@ -364,16 +328,7 @@ void FFMuxer::OpenVideo()
 	{
 		PrintEngineError("Could not allocate video frame");
 		return;
-	}
-	//if (video_st.enc->pix_fmt != AV_PIX_FMT_YUV420P) 
-	//{
-	//	video_st.tmp_frame = AllocPicture(AV_PIX_FMT_YUV420P, video_st.enc->width, video_st.enc->height);
-	//	if (!video_st.tmp_frame)
-	//	{
-	//		PrintEngineError("Could not allocate temporary picture");
-	//		return;
-	//	}
-	//}
+	}	
 
 	/* copy the stream parameters to the muxer */
 	ret = avcodec_parameters_from_context(video_st.st->codecpar, video_st.enc);
@@ -667,12 +622,12 @@ AVFrame * FFMuxer::GetAudioFrame()
 	FString AudioFilePath = FPaths::ProjectDir() + "/ThirdParty/audio/" + AudioFileName;
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 
-	int MyInteger = 0;
+	int32 MyInteger = 0;
 	IFileHandle* FileHandle = PlatformFile.OpenRead(*AudioFilePath);
 	if (FileHandle)
 	{
 		// Create a pointer to MyInteger
-		int* IntPointer = &MyInteger;
+		int32* IntPointer = &MyInteger;
 		// Reinterpret the pointer for the Read function
 		uint8* ByteBuffer = reinterpret_cast<uint8*>(IntPointer);
 
@@ -680,10 +635,9 @@ AVFrame * FFMuxer::GetAudioFrame()
 		{
 			FileHandle->Seek(offset);
 			// Read the integer from file into our reinterpret pointer
-			FileHandle->Read(ByteBuffer, sizeof(int));
+			FileHandle->Read(ByteBuffer, sizeof(int32));
 
-			offset += sizeof(int);
-			//v = (int)(sin(audio_st.t) * 10000);
+			offset += sizeof(int32);
 			for (i = 0; i < audio_st.enc->channels; i++)
 			{
 				*q++ = MyInteger;
@@ -731,8 +685,7 @@ void FFMuxer::FillYUVImage(FViewport* Viewport, AVFrame* Frame)
 	TArray<FColor> ColorBuffer;
 	TArray<uint8> SingleFrameBuffer;
 
-	if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(),
-		FIntRect(0, 0, ViewportSize.X, ViewportSize.Y)))
+	if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(), FIntRect(0, 0, ViewportSize.X, ViewportSize.Y)))
 	{
 		PrintEngineError("Cannot read from viewport.Aborting");
 		return;

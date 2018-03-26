@@ -1,17 +1,16 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
-#include <string>
+
+#include "CoreMinimal.h"
 #include "FFHeader.h"
 #include "FFMuxer.h"
-
-#include "Runtime/Core/Public/Misc/Paths.h"
-#include "CoreMinimal.h"
+#include "FFMediaDataTypes.h"
+#include "GameplayStreamer.h"
 #include "Engine/GameViewportClient.h"
-#include "Runtime/Core/Public/Containers/Queue.h"
+#include "Runtime/Core/Public/Misc/FileHelper.h"
 #include "Runtime/Engine/Classes/Engine/Engine.h"
 #include "StreamGV.generated.h"
-
 
 /**
  * 
@@ -27,4 +26,6 @@ class STREAM_API UStreamGV : public UGameViewportClient
 
 private:
 	FFMuxer* Muxer = nullptr;
+
+	void ReadRGBFromViewportToBuffer(FViewport *Viewport);
 };
