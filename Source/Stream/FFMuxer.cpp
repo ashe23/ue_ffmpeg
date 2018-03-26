@@ -693,7 +693,7 @@ void FFMuxer::FillYUVImage(FViewport* Viewport, AVFrame* Frame)
 
 	// converting from TArray to const uint8*
 	SingleFrameBuffer.Empty();
-	SingleFrameBuffer.SetNum(ColorBuffer.Num() * 4);
+	SingleFrameBuffer.SetNumZeroed(ColorBuffer.Num() * 4);
 	uint8* DestPtr = nullptr;
 	for (auto i = 0; i < ColorBuffer.Num(); i++)
 	{

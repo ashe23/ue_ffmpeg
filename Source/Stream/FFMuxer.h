@@ -51,9 +51,9 @@ public:
 	bool IsReadyToStream() const;
 	void Mux(FViewport* Viewport);
 	void Release();
+private:
 	void PrintEngineError(FString ErrorString);
 	void PrintEngineWarning(FString Text);
-private:
 	void AddVideoStream();
 	void AddAudioStream();
 	void OpenVideo();

@@ -152,15 +152,6 @@ void AAudioRecorder::DecodeSoundWave(USoundWave * PlayingSoundWave)
 	}
 }
 
-void AAudioRecorder::ff_error_log(int ret_err)
-{
-	char error_buf[256];
-	av_make_error_string(error_buf, sizeof(error_buf), ret_err);
-	FString ErrDescription{ error_buf };
-	UE_LOG(LogTemp, Error, TEXT("Error code: %d"), ret_err);
-	UE_LOG(LogTemp, Error, TEXT("Error desc: %s"), *ErrDescription);
-}
-
 
 void AAudioRecorder::AudioPlayPercent(const USoundWave * PlayingSoundWave, const float PlayBackPercent)
 {

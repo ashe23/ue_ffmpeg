@@ -2,23 +2,6 @@
 
 #pragma once
 
-extern "C"
-{
-#ifndef __STDC_CONSTANT_MACROS
-#define __STDC_CONSTANT_MACROS
-#endif
-#include "libavcodec/avcodec.h"
-#include "libavformat/avformat.h"
-#include "libavfilter/avfiltergraph.h"
-#include "libavfilter/avfilter.h"
-#include "libavutil/imgutils.h"
-#include "libavutil/pixfmt.h"
-#include "libswscale/swscale.h"
-#include "libavutil/opt.h"
-#include "libavutil/error.h"
-#include "libavutil/time.h"
-#include "libswresample/swresample.h"
-}
 #include "Runtime/Engine/Classes/Sound/SoundWave.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
