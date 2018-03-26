@@ -7,24 +7,36 @@
 #include "Runtime/Core/Public/Misc/Paths.h"
 #include "Runtime/Engine/Public/UnrealClient.h"
 #include <string>
+#include <iostream>
+#include "Runtime/Core/Public/HAL/PlatformFilemanager.h"
+#include "Runtime/Core/Public/Misc/FileHelper.h"
+#include "Runtime/Core/Public/Misc/Paths.h"
 
-
-struct OutputStream 
+enum class EFrameType
 {
-	AVStream *st;
-	AVCodecContext *enc;
+	Video,
+	Audio
+};
+
+// a wrapper around a single output AVStream
+struct OutputStream {
+	AVStream *st = nullptr;
+	AVCodecContext *enc = nullptr;
 
 	/* pts of the next frame that will be generated */
-	int64_t next_pts;
-	int samples_count;
+	int64_t next_pts = 0;
+	int samples_count = 0;
 
-	AVFrame *frame;
-	AVFrame *tmp_frame;
+	AVFrame *frame = nullptr;
+	AVFrame *tmp_frame = nullptr;
 
-	float t, tincr, tincr2;
+	float t= 0, tincr=0, tincr2=0;
 
-	struct SwsContext *sws_ctx;
-	struct SwrContext *swr_ctx;
+	SwsContext *sws_ctx = nullptr;
+	SwrContext *swr_ctx = nullptr;
+
+	uint8* frame_buf = nullptr;
+	int audio_buffer_size = 0;
 };
 
 /**
@@ -33,41 +45,54 @@ struct OutputStream
 class STREAM_API FFMuxer
 {
 public:	
-	void Initialize();
+	~FFMuxer();
+	void Initialize(int32 Width,int32 Height);
 	bool IsInitialized() const;
+	bool IsReadyToStream() const;
 	void Mux(FViewport* Viewport);
-	void EndMux();
-	void CloseStream(AVFormatContext *oc, OutputStream *ost);
+	void Release();
+	void PrintEngineError(FString ErrorString);
+	void PrintEngineWarning(FString Text);
 private:
-	FViewport * MuxViewport = nullptr;
+	void AddVideoStream();
+	void AddAudioStream();
+	void OpenVideo();
+	void OpenAudio();
+	AVFrame* AllocPicture(enum AVPixelFormat pix_fmt, int w, int h);
+	AVFrame* AllocAudioFrame(enum AVSampleFormat sample_fmt, uint64_t channel_layout, int sample_rate, int nb_samples);
+	int WriteVideoFrame(FViewport * Viewport);
+	int WriteAudioFrame();
+	int WriteFrame(const AVRational *time_base, AVStream *st, AVPacket *pkt);
+
+	AVFrame* GetVideoFrame(FViewport * Viewport);
+	AVFrame* GetAudioFrame();
+
+	void CloseVideoStream();
+	void CloseAudioStream();
+
+	void FillYUVImage(FViewport * Viewport, AVFrame* Frame);
+private:
 	bool initialized = false;
-	static const int STREAM_DURATION = 10;
-	static const int STREAM_FRAME_RATE = 30;
-	AVPixelFormat STREAM_PIX_FMT = AVPixelFormat::AV_PIX_FMT_YUV420P;
-	const char* SCALE_FLAGS = "SWS_BICUBIC";
-	const char* OUTPUT_URL = "C:/screen/test.mp4";
-private:
-	OutputStream video_st = { 0 };
-	OutputStream audio_st = { 0 };
-	AVOutputFormat *fmt = nullptr;
-	AVFormatContext *oc = nullptr;
-	AVCodec *audio_codec = nullptr, *video_codec = nullptr;
-	AVDictionary *opt = nullptr;
+	bool CanStream = false;
+	bool MuxingLoopStarted = false;
+	int width;
+	int height;
+	const char *filename = "C:/screen/test.mp4";
+	//const char *filename = "rtmp://a.rtmp.youtube.com/live2/qx3p-h110-dddb-306x";
+	FString AudioFileName = "song1.wav";
+	TArray<uint8> AudioFileBuffer;
+	TArray<uint16> Buf;
+	int64 offset = 44;
+	/// remove later
+	AVFormatContext *FormatContext = nullptr;
+	AVOutputFormat* OutputFormat = nullptr;
+	AVDictionary *Dictionary = nullptr;
+	AVCodec* VideoCodec = nullptr;
+	AVCodec* AudioCodec = nullptr;
 	int ret;
 	int have_video = 0, have_audio = 0;
 	int encode_video = 0, encode_audio = 0;
-private:
-	bool AddStream(OutputStream *ost, AVFormatContext *oc, AVCodec **codec,enum AVCodecID codec_id);
-	bool OpenVideo(AVFormatContext *oc, AVCodec *codec, OutputStream *ost, AVDictionary *opt_arg);
-	bool OpenAudio(AVFormatContext *oc, AVCodec *codec, OutputStream *ost, AVDictionary *opt_arg);
-	AVFrame* AllocPicture(enum AVPixelFormat pix_fmt, int width, int height);
-	AVFrame* AllocAudioFrame(enum AVSampleFormat sample_fmt, uint64_t channel_layout, int sample_rate, int nb_samples);
-	int WriteVideoFrame(AVFormatContext *oc, OutputStream *ost);
-	int WriteAudioFrame(AVFormatContext *oc, OutputStream *ost);
-	int WriteFrame(AVFormatContext *fmt_ctx, const AVRational *time_base, AVStream *st, AVPacket *pkt);
-	AVFrame* GetVideoFrame(OutputStream *ost);
-	AVFrame* GetAudioFrame(OutputStream *ost);
 
-	void FillYUVImage(AVFrame *pict, int frame_index, int width, int height);
-	AVRational GetRational(int num, int den);
+	OutputStream audio_st;
+	OutputStream video_st;
 };
