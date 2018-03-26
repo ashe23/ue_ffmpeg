@@ -2,7 +2,6 @@
 
 #pragma once
 
-// asdfasdfasd
 extern "C"
 {
 #ifndef __STDC_CONSTANT_MACROS
