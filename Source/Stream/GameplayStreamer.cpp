@@ -2,12 +2,25 @@
 
 #include "GameplayStreamer.h"
 
+#include "FFMuxer.h"
+
 // Sets default values
 AGameplayStreamer::AGameplayStreamer()
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+	mMuxer = new FFMuxer();
+}
 
+AGameplayStreamer::~AGameplayStreamer()
+{
+	mStreamStarted = false;
+	if (mWorkerThread)
+	{
+		mWorkerThread->join();
+	}
+	delete mWorkerThread;
+	delete mMuxer;
 }
 
 // Called when the game starts or when spawned
@@ -30,7 +43,12 @@ void AGameplayStreamer::Tick(float DeltaTime)
 // starting filling audio buffer from audio list callbacks(maybe fmod integration)
 void AGameplayStreamer::StartStream()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Starting stream..."));
+	if (!mStreamStarted)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Starting stream..."));
+		mStreamStarted = true;
+		mWorkerThread = new std::thread(&AGameplayStreamer::StreamingLogic, this);
+	}
 }
 
 // stops stream, releases data
@@ -42,5 +60,13 @@ void AGameplayStreamer::StopStream()
 void AGameplayStreamer::PauseStream()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Pause stream..."));
+}
+
+void AGameplayStreamer::StreamingLogic()
+{
+	while (mStreamStarted)
+	{
+		mMuxer->Mux();
+	}
 }
 

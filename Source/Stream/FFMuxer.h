@@ -50,8 +50,9 @@ public:
 	bool IsInitialized() const;
 	bool IsReadyToStream() const;
 	void Mux();
-	void Release();
+
 private:
+	void Release();
 	void PrintEngineError(FString ErrorString);
 	void PrintEngineWarning(FString Text);
 	void AddVideoStream();

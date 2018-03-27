@@ -119,7 +119,7 @@ void FFMuxer::Mux()
 				UE_LOG(LogTemp, Warning, TEXT("AudioPTS: %d , VideoPTS: %d"), audio_st.next_pts, video_st.next_pts);
 
 				int DecodeTime = av_compare_ts(video_st.next_pts, video_st.enc->time_base, audio_st.next_pts, audio_st.enc->time_base);
-				if (encode_video && (!encode_audio || DecodeTime <= 0)) 
+				if (encode_video && (!encode_audio || DecodeTime <= 0))
 				{
 					encode_video = !WriteVideoFrame();
 				}
@@ -135,7 +135,7 @@ void FFMuxer::Mux()
 			* close the CodecContexts open when you wrote the header; otherwise
 			* av_write_trailer() may try to use memory that was freed on
 			* av_codec_close(). */
-			av_write_trailer(FormatContext);	
+			av_write_trailer(FormatContext);
 		}
 	}
 }
