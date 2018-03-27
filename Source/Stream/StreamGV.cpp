@@ -2,6 +2,8 @@
 
 #include "StreamGV.h"
 
+#include "buffer.h"
+
 void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 {
 	Super::Draw(Viewport, SceneCanvas);
@@ -36,5 +38,14 @@ bool UStreamGV::isValidScreenSizes(FViewport * Viewport)
 
 void UStreamGV::ReadRGBFromViewportToBuffer(FViewport * Viewport)
 {
+	auto ViewportSize = Viewport->GetSizeXY();
+	TArray<FColor> ColorBuffer;
+	if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(),
+		FIntRect(0, 0, ViewportSize.X, ViewportSize.Y)))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Cannot read from viewport.Aborting"));
+		return;
+	}
 
+	VideoBuffer::GetInstance().add(ColorBuffer);
 }
