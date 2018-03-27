@@ -676,7 +676,7 @@ void FFMuxer::CloseAudioStream()
 
 void FFMuxer::FillYUVImage(AVFrame* Frame)
 {
-	FIntPoint ViewportSize = FIntPoint(height, width);
+	//FIntPoint ViewportSize = FIntPoint(width, height);
 
 	// Reading actual pixel data of single frame from viewport
 	//TArray<FColor> ColorBuffer;
