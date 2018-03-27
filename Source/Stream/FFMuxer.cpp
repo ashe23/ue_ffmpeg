@@ -2,6 +2,8 @@
 
 #include "FFMuxer.h"
 
+#include "buffer.h"
+
 #define STREAM_DURATION   10.0
 #define STREAM_FRAME_RATE 30 /* 25 images/s */
 #define STREAM_PIX_FMT    AV_PIX_FMT_YUV420P /* default pix_fmt */
@@ -102,7 +104,7 @@ bool FFMuxer::IsReadyToStream() const
 	return CanStream;
 }
 
-void FFMuxer::Mux(FViewport * Viewport)
+void FFMuxer::Mux()
 {
 	if (CanStream)
 	{
@@ -119,7 +121,7 @@ void FFMuxer::Mux(FViewport * Viewport)
 				int DecodeTime = av_compare_ts(video_st.next_pts, video_st.enc->time_base, audio_st.next_pts, audio_st.enc->time_base);
 				if (encode_video && (!encode_audio || DecodeTime <= 0)) 
 				{
-					encode_video = !WriteVideoFrame(Viewport);
+					encode_video = !WriteVideoFrame();
 				}
 				else
 				{
@@ -457,14 +459,14 @@ AVFrame * FFMuxer::AllocAudioFrame(AVSampleFormat sample_fmt, uint64_t channel_l
 	return frame;
 }
 
-int FFMuxer::WriteVideoFrame(FViewport * Viewport)
+int FFMuxer::WriteVideoFrame()
 {
 	int ret;
 	AVFrame *frame;
 	int got_packet = 0;
 	AVPacket pkt = { 0 };
 
-	frame = GetVideoFrame(Viewport);
+	frame = GetVideoFrame();
 
 	av_init_packet(&pkt);
 
@@ -573,7 +575,7 @@ int FFMuxer::WriteFrame(const AVRational * time_base, AVStream * st, AVPacket * 
 	return av_interleaved_write_frame(FormatContext, pkt);
 }
 
-AVFrame * FFMuxer::GetVideoFrame(FViewport * Viewport)
+AVFrame * FFMuxer::GetVideoFrame()
 {
 	/* check if we want to generate more frames */
 	if (av_compare_ts(video_st.next_pts, video_st.enc->time_base, STREAM_DURATION, GetRational(1, 1)) >= 0)
@@ -601,7 +603,7 @@ AVFrame * FFMuxer::GetVideoFrame(FViewport * Viewport)
 		return nullptr;
 	}
 
-	FillYUVImage(Viewport, video_st.frame); // todo rename	
+	FillYUVImage(video_st.frame); // todo rename	
 
 	video_st.frame->pts = video_st.next_pts++;
 
@@ -672,24 +674,14 @@ void FFMuxer::CloseAudioStream()
 	swr_free(&audio_st.swr_ctx);
 }
 
-void FFMuxer::FillYUVImage(FViewport* Viewport, AVFrame* Frame)
+void FFMuxer::FillYUVImage(AVFrame* Frame)
 {
-	if (!Viewport)
-	{
-		return;
-	}
-
-	FIntPoint ViewportSize = Viewport->GetSizeXY();
+	FIntPoint ViewportSize = FIntPoint(height, width);
 
 	// Reading actual pixel data of single frame from viewport
-	TArray<FColor> ColorBuffer;
+	//TArray<FColor> ColorBuffer;
 	TArray<uint8> SingleFrameBuffer;
-
-	if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(), FIntRect(0, 0, ViewportSize.X, ViewportSize.Y)))
-	{
-		PrintEngineError("Cannot read from viewport.Aborting");
-		return;
-	}
+	auto ColorBuffer = VideoBuffer::GetInstance().remove();
 
 	// converting from TArray to const uint8*
 	SingleFrameBuffer.Empty();

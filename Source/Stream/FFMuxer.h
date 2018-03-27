@@ -49,7 +49,7 @@ public:
 	void Initialize(int32 Width,int32 Height);
 	bool IsInitialized() const;
 	bool IsReadyToStream() const;
-	void Mux(FViewport* Viewport);
+	void Mux();
 	void Release();
 private:
 	void PrintEngineError(FString ErrorString);
@@ -60,17 +60,18 @@ private:
 	void OpenAudio();
 	AVFrame* AllocPicture(enum AVPixelFormat pix_fmt, int w, int h);
 	AVFrame* AllocAudioFrame(enum AVSampleFormat sample_fmt, uint64_t channel_layout, int sample_rate, int nb_samples);
-	int WriteVideoFrame(FViewport * Viewport);
+	int WriteVideoFrame();
 	int WriteAudioFrame();
 	int WriteFrame(const AVRational *time_base, AVStream *st, AVPacket *pkt);
 
-	AVFrame* GetVideoFrame(FViewport * Viewport);
+	AVFrame* GetVideoFrame();
 	AVFrame* GetAudioFrame();
 
 	void CloseVideoStream();
 	void CloseAudioStream();
 
-	void FillYUVImage(FViewport * Viewport, AVFrame* Frame);
+	void FillYUVImage(AVFrame* Frame);
+
 private:
 	bool initialized = false;
 	bool CanStream = false;
@@ -95,4 +96,5 @@ private:
 
 	OutputStream audio_st;
 	OutputStream video_st;
+
 };
