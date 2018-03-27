@@ -19,7 +19,7 @@
 
 FFMuxer::~FFMuxer()
 {
-	//Release();
+	this->Release();
 }
 
 void FFMuxer::Initialize(int32 Width, int32 Height)

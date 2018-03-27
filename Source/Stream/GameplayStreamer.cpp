@@ -10,6 +10,7 @@ AGameplayStreamer::AGameplayStreamer()
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 	mMuxer = new FFMuxer();
+	mMuxer->Initialize(1920, 1080);
 }
 
 AGameplayStreamer::~AGameplayStreamer()
@@ -19,15 +20,15 @@ AGameplayStreamer::~AGameplayStreamer()
 	{
 		mWorkerThread->join();
 	}
-	delete mWorkerThread;
-	delete mMuxer;
+	//delete mWorkerThread;
+	//delete mMuxer;
 }
 
 // Called when the game starts or when spawned
 void AGameplayStreamer::BeginPlay()
 {
 	Super::BeginPlay();
-	
+	this->StartStream();
 }
 
 
