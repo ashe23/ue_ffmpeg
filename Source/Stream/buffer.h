@@ -6,12 +6,18 @@
 
 #include "CoreMinimal.h"
 
+template<typename T, int buffsize = 30>
+class Buffer;
+
+using VideoBuffer = Buffer<TArray<FColor>>;
+
+
 /*
 class Buffer represents a
 thread safe buffer for producer 
 consumer scenario usage.
 */
-template<typename T, int buffsize = 30>
+template<typename T, int buffsize>
 class Buffer
 {
 public:
@@ -74,3 +80,4 @@ private:
 	std::deque<T> buffer_;
 	const unsigned int size_ = buffsize;
 };
+
