@@ -4,7 +4,7 @@
 
 #include "buffer.h"
 
-#define STREAM_DURATION   10.0
+#define STREAM_DURATION   50.0
 #define STREAM_FRAME_RATE 30 /* 25 images/s */
 #define STREAM_PIX_FMT    AV_PIX_FMT_YUV420P /* default pix_fmt */
 
@@ -201,7 +201,7 @@ void FFMuxer::AddVideoStream()
 
 	// setting params
 	video_st.enc->codec_id = VideoCodec->id;
-	video_st.enc->bit_rate = 400000;
+	video_st.enc->bit_rate = 4000000;
 	/* Resolution must be a multiple of two. */
 	video_st.enc->width = width;
 	video_st.enc->height = height;
@@ -212,7 +212,7 @@ void FFMuxer::AddVideoStream()
 	video_st.st->time_base = GetRational(1, STREAM_FRAME_RATE);
 	video_st.enc->time_base = video_st.st->time_base;
 
-	video_st.enc->gop_size = 12; /* emit one intra frame every twelve frames at most */
+	video_st.enc->gop_size = 60; /* emit one intra frame every twelve frames at most */
 	video_st.enc->pix_fmt = STREAM_PIX_FMT;
 	if (video_st.enc->codec_id == AV_CODEC_ID_MPEG2VIDEO)
 	{
