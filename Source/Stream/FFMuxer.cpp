@@ -579,11 +579,11 @@ int FFMuxer::WriteFrame(const AVRational * time_base, AVStream * st, AVPacket * 
 AVFrame * FFMuxer::GetVideoFrame()
 {
 	/* check if we want to generate more frames */
-	if (av_compare_ts(video_st.next_pts, video_st.enc->time_base, STREAM_DURATION, GetRational(1, 1)) >= 0)
+	/*if (av_compare_ts(video_st.next_pts, video_st.enc->time_base, STREAM_DURATION, GetRational(1, 1)) >= 0)
 	{
 		CanStream = false;
 		return nullptr;
-	}
+	}*/
 
 	/* when we pass a frame to the encoder, it may keep a reference to it
 	* internally; make sure we do not overwrite it here */
@@ -614,11 +614,11 @@ AVFrame * FFMuxer::GetVideoFrame()
 AVFrame * FFMuxer::GetAudioFrame()
 {
 	/* check if we want to generate more frames */
-	if (av_compare_ts(audio_st.next_pts, audio_st.enc->time_base, STREAM_DURATION, GetRational(1, 1)) >= 0)
+	/*if (av_compare_ts(audio_st.next_pts, audio_st.enc->time_base, STREAM_DURATION, GetRational(1, 1)) >= 0)
 	{
 		CanStream = false;
 		return nullptr;
-	}
+	}*/
 
 	int16 *q = (int16*)audio_st.tmp_frame->data[0];
 	int j, i;
