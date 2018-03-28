@@ -17,6 +17,41 @@
 
 class FFMuxer;
 
+class MuxerWorker : public FRunnable
+{
+
+public:
+	virtual ~MuxerWorker();
+
+public:
+	// Begin FRunnable interface.
+	virtual bool Init();
+	virtual uint32 Run();
+	virtual void Stop();
+	// End FRunnable interface
+
+	/*
+	Start the thread and the worker from static (easy access)!
+	This code ensures only 1 Prime Number thread will be able to run at a time.
+	This function returns a handle to the newly started instance.
+	*/
+	static MuxerWorker* JoyInit();
+	/** Shuts down the thread. Static so it can easily be called from outside the thread context */
+	static void Shutdown();
+
+	/** Makes sure this thread has stopped properly */
+	void EnsureCompletion();
+
+private:
+	MuxerWorker();
+	static MuxerWorker* Runnable;
+
+private:
+	FFMuxer* mMuxer = nullptr;
+	FRunnableThread* mThread = nullptr;
+	FThreadSafeCounter StopTaskCounter = 0;
+};
+
 UCLASS()
 class STREAM_API AGameplayStreamer : public AActor
 {
@@ -44,13 +79,6 @@ public:
 	void PauseStream();
 
 private:
-	void StreamingLogic();
-
-
-private:
-	FFMuxer* mMuxer;
-	std::thread* mWorkerThread = nullptr;
-	bool mStopWork = false;
-	bool mStreamStarted = false;
+	MuxerWorker* mWorker;
 	
 };

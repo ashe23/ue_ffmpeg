@@ -108,11 +108,11 @@ void FFMuxer::Mux()
 {
 	if (CanStream)
 	{
-		if (!MuxingLoopStarted)
+		//if (!MuxingLoopStarted)
 		{
-			MuxingLoopStarted = true;
+			//MuxingLoopStarted = true;
 
-			while (encode_video || encode_audio)
+			//while (encode_video || encode_audio)
 			{
 				/* select the stream to encode */
 
@@ -129,13 +129,13 @@ void FFMuxer::Mux()
 				}
 			}
 
-			CanStream = false;
+			//CanStream = false;
 
 			/* Write the trailer, if any. The trailer must be written before you
 			* close the CodecContexts open when you wrote the header; otherwise
 			* av_write_trailer() may try to use memory that was freed on
 			* av_codec_close(). */
-			av_write_trailer(FormatContext);
+			//av_write_trailer(FormatContext);
 		}
 	}
 }
@@ -143,6 +143,7 @@ void FFMuxer::Mux()
 void FFMuxer::Release()
 {
 	PrintEngineWarning("Releasing ffmpeg resources!");
+	av_write_trailer(FormatContext);
 
 	/* Close each codec. */
 	if (have_video)
