@@ -10,6 +10,7 @@ template<typename T, int buffsize = 30>
 class Buffer;
 
 using VideoBuffer = Buffer<TArray<FColor>>;
+using AudioBuffer = Buffer<TArray<int16>>;
 
 
 /*
