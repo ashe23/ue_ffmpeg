@@ -213,7 +213,7 @@ void FFMuxer::AddVideoStream()
 	video_st.st->time_base = GetRational(1, STREAM_FRAME_RATE);
 	video_st.enc->time_base = video_st.st->time_base;
 
-	video_st.enc->gop_size = 60; /* emit one intra frame every twelve frames at most */
+	video_st.enc->gop_size = 12; /* emit one intra frame every twelve frames at most */
 	video_st.enc->pix_fmt = STREAM_PIX_FMT;
 	if (video_st.enc->codec_id == AV_CODEC_ID_MPEG2VIDEO)
 	{
@@ -300,7 +300,7 @@ void FFMuxer::OpenVideo()
 	int ret;
 
 	av_dict_set(&Dictionary, "profile", "high", 0);
-	av_dict_set(&Dictionary, "preset", "superfast", 0);
+	av_dict_set(&Dictionary, "preset", "slow", 0);
 	av_dict_set(&Dictionary, "tune", "zerolatency", 0);
 
 	//video_st.next_pts = 0;

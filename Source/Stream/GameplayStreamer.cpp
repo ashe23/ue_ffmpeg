@@ -62,7 +62,7 @@ MuxerWorker::MuxerWorker()
 {
 	UE_LOG(LogTemp, Warning, TEXT("runable ctor"));
 	mMuxer = new FFMuxer;
-	mThread = FRunnableThread::Create(this, TEXT("MuxerWorker"), 0, TPri_BelowNormal);
+	mThread = FRunnableThread::Create(this, TEXT("MuxerWorker"), 0, TPri_Normal);
 }
 
 MuxerWorker::~MuxerWorker()
