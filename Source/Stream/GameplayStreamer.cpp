@@ -24,7 +24,7 @@ void AGameplayStreamer::BeginPlay()
 {
 	UE_LOG(LogTemp, Warning, TEXT("BeginPlay"));
 	Super::BeginPlay();
-	//this->StartStream();
+	this->StartStream();
 }
 
 

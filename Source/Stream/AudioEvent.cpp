@@ -28,6 +28,5 @@ void AAudioEvent::FillAudioBuffer(FString AudioTrackName)
 {
 	UE_LOG(LogTemp, Warning, TEXT("Filling buffer with given audio track, %s"), *AudioTrackName);
 
-	// AudioBuffer::Add(AudioManager::get(AudioTrackName));
 }
 
