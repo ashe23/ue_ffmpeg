@@ -91,6 +91,11 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 		
 		CanStream = true;		
 		PrintEngineWarning("Initializing success");
+
+		TArray<FString> audioList;
+		audioList.Add(AudioFileName);
+		AudioManager::GetInstance().addAudioList(audioList);
+		PcmData = AudioManager::GetInstance().getAudio(AudioFileName).getBuffer();
 	}
 }
 
@@ -613,43 +618,10 @@ AVFrame * FFMuxer::GetVideoFrame()
 
 AVFrame * FFMuxer::GetAudioFrame()
 {
-	/* check if we want to generate more frames */
-	/*if (av_compare_ts(audio_st.next_pts, audio_st.enc->time_base, STREAM_DURATION, GetRational(1, 1)) >= 0)
-	{
-		CanStream = false;
-		return nullptr;
-	}*/
-
 	int16 *q = (int16*)audio_st.tmp_frame->data[0];
-	int j, i;
-	FString AudioFilePath = FPaths::ProjectDir() + "/ThirdParty/audio/" + AudioFileName;
-	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 
-	int32 MyInteger = 0;
-	IFileHandle* FileHandle = PlatformFile.OpenRead(*AudioFilePath);
-	if (FileHandle)
-	{
-		// Create a pointer to MyInteger
-		int32* IntPointer = &MyInteger;
-		// Reinterpret the pointer for the Read function
-		uint8* ByteBuffer = reinterpret_cast<uint8*>(IntPointer);
-
-		for (j = 0; j < audio_st.tmp_frame->nb_samples; j++)
-		{
-			FileHandle->Seek(offset);
-			// Read the integer from file into our reinterpret pointer
-			FileHandle->Read(ByteBuffer, sizeof(int32));
-
-			offset += sizeof(int32);
-			for (i = 0; i < audio_st.enc->channels; i++)
-			{
-				*q++ = MyInteger;
-			}
-		}
-
-		// Close the file again
-		delete FileHandle;
-	}
+	memcpy(q, (int16*)(PcmData.GetData() + offset), audio_st.tmp_frame->nb_samples * sizeof(int32));
+	offset += audio_st.tmp_frame->nb_samples * sizeof(int32);
 
 	audio_st.tmp_frame->pts = audio_st.next_pts;
 	audio_st.next_pts += audio_st.tmp_frame->nb_samples;

@@ -12,6 +12,8 @@
 #include "Runtime/Core/Public/Misc/FileHelper.h"
 #include "Runtime/Core/Public/Misc/Paths.h"
 
+#include "AudioManager.h"
+
 enum class EFrameType
 {
 	Video,
@@ -44,7 +46,8 @@ struct OutputStream {
  */
 class STREAM_API FFMuxer
 {
-public:	
+public:
+	FFMuxer() = default;
 	~FFMuxer();
 	void Initialize(int32 Width,int32 Height);
 	bool IsInitialized() const;
@@ -84,7 +87,7 @@ private:
 	FString AudioFileName = "song1.wav";
 	TArray<uint8> AudioFileBuffer;
 	TArray<uint16> Buf;
-	int64 offset = 44;
+	int64 offset = 0;
 	/// remove later
 	AVFormatContext *FormatContext = nullptr;
 	AVOutputFormat* OutputFormat = nullptr;
@@ -97,5 +100,6 @@ private:
 
 	OutputStream audio_st;
 	OutputStream video_st;
-
+	AudioPCM pcmAudio;
+	TArray<uint8> PcmData; // audio pcm data
 };

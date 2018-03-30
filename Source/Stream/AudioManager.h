@@ -10,6 +10,7 @@ uint32 GetTypeHash(const AudioPCM& obj);
 class AudioPCM
 {
 public:
+	AudioPCM() = default;
 	AudioPCM(const FString& name);
 	AudioPCM(const AudioPCM& other);
 	AudioPCM& operator=(AudioPCM other);
@@ -20,33 +21,30 @@ public:
 public:
 	FString getName() const { return mName; }
 	size_t getSize() const { return mSize; }
-	const uint8* getBuffer() const { return mBuffer; }
+	TArray<uint8> getBuffer() const { return mBuffer; }
 
 private:
 	FString mName;
 	size_t mSize = 0;
-	uint8* mBuffer = nullptr;
+	TArray<uint8> mBuffer;
 };
 
 class AudioManager
 {
 public:
-	AudioManager() = default;
 	~AudioManager() = default;
+	static AudioManager& GetInstance() {
+		static AudioManager instance;
+		return instance;
+	}
 
 	void addAudioList(const TArray<FString>& filenames);
+	AudioPCM getAudio(const FString& filename) const;
 
 private:
-	TSet<AudioPCM> mAudioSet;
+	AudioManager() = default;
+
+private:
+	TMap<FString, AudioPCM> mAudioSet;
 
 };
-
-bool operator==(const AudioPCM& l, const AudioPCM& r)
-{
-	return (l.getName() == r.getName());
-}
-
-uint32 GetTypeHash(const AudioPCM& obj)
-{
-	return GetTypeHash(obj.getName());
-}
