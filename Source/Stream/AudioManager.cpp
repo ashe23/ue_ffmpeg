@@ -7,6 +7,16 @@
 // wav offset
 static const int32 OFFSET = 44;
 
+bool operator==(const AudioPCM& l, const AudioPCM& r)
+{
+	return (l.getName() == r.getName());
+}
+
+uint32 GetTypeHash(const AudioPCM& obj)
+{
+	return GetTypeHash(obj.getName());
+}
+
 AudioPCM::AudioPCM(const FString& name) :
 	mName(name)
 {
@@ -17,28 +27,34 @@ AudioPCM::AudioPCM(const FString& name) :
 	if (FileHandle)
 	{
 		mSize = FileHandle->Size();
-		mBuffer = new uint8[mSize];
+		mSize -= OFFSET;
+		uint8* Buffer = new uint8[mSize];
 		if (!FileHandle->Seek(OFFSET))
 		{
-			// todo
+			UE_LOG(LogTemp, Warning, TEXT("FileHandle->Seek failed"));
 		}
-		if (!FileHandle->Read(mBuffer, sizeof(mSize)))
+		if (!FileHandle->Read(Buffer, mSize))
 		{
-			// todo
+			UE_LOG(LogTemp, Warning, TEXT("FileHandle->Read failed"));
+		}
+
+		mBuffer.Reserve(mSize);
+		for (int i = 0 ; i < mSize; ++i)
+		{
+			mBuffer.Add(Buffer[i]);
 		}
 
 		// Close the file again
 		delete FileHandle;
+		delete[] Buffer;
 	}
 }
 
 AudioPCM::AudioPCM(const AudioPCM& other) :
 	mName(other.getName()),
 	mSize(other.getSize()),
-	mBuffer(mSize ? new uint8[mSize] : nullptr)
+	mBuffer(other.getBuffer())
 {
-	//memcpy(mBuffer, other.getBuffer(), mSize);
-	std::copy(other.getBuffer(), other.getBuffer() + mSize, mBuffer);
 }
 
 AudioPCM& AudioPCM::operator=(AudioPCM other)
@@ -54,8 +70,6 @@ AudioPCM::AudioPCM(AudioPCM&& other)
 
 AudioPCM::~AudioPCM()
 {
-	delete[] mBuffer;
-	mBuffer = nullptr;
 }
 
 void swap(AudioPCM& first, AudioPCM& second)
@@ -70,6 +84,12 @@ void AudioManager::addAudioList(const TArray<FString>& filenames)
 {
 	for (auto v : filenames)
 	{
-		mAudioSet.Add(AudioPCM(v));
+		mAudioSet.Add(v, AudioPCM(v));
 	}
+}
+
+AudioPCM AudioManager::getAudio(const FString & filename) const
+{
+	check(mAudioSet.Contains(filename));
+	return mAudioSet[filename];
 }
