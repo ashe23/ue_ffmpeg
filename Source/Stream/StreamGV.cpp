@@ -38,6 +38,7 @@ bool UStreamGV::isValidScreenSizes(FViewport * Viewport)
 
 void UStreamGV::ReadRGBFromViewportToBuffer(FViewport * Viewport)
 {
+	// TODO:ashe23 bottle neck in read pixels, optimize later
 	auto ViewportSize = Viewport->GetSizeXY();
 	TArray<FColor> ColorBuffer;
 	if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(),

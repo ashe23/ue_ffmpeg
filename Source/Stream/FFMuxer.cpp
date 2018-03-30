@@ -703,6 +703,6 @@ void FFMuxer::FillYUVImage(AVFrame* Frame)
 	InLineSize[0] = 4 * video_st.enc->width;
 	uint8* inData[1] = { SingleFrameBuffer.GetData() };
 
-	// todo:ashe23 crashes on scale
+	// Crushing IF PLAYING in PIE OR WITH wrong Sizes
 	sws_scale(video_st.sws_ctx, inData, InLineSize, 0, video_st.enc->height, Frame->data, Frame->linesize);
 }
