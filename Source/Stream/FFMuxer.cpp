@@ -305,7 +305,7 @@ void FFMuxer::OpenVideo()
 	int ret;
 
 	av_dict_set(&Dictionary, "profile", "high", 0);
-	av_dict_set(&Dictionary, "preset", "slow", 0);
+	av_dict_set(&Dictionary, "preset", "superfast", 0);
 	av_dict_set(&Dictionary, "tune", "zerolatency", 0);
 
 	//video_st.next_pts = 0;
@@ -619,13 +619,24 @@ AVFrame * FFMuxer::GetVideoFrame()
 AVFrame * FFMuxer::GetAudioFrame()
 {
 	int16 *q = (int16*)audio_st.tmp_frame->data[0];
+	int32 requiredDataSize = audio_st.tmp_frame->nb_samples * sizeof(int32);
 
-	memcpy(q, (int16*)(PcmData.GetData() + offset), audio_st.tmp_frame->nb_samples * sizeof(int32));
-	offset += audio_st.tmp_frame->nb_samples * sizeof(int32);
+	if (PcmData.Num() < offset + requiredDataSize)
+	{
+		// fill empty audio
+		for (int i = 0; i < requiredDataSize / 2; ++i)
+		{
+			*q++ = 0;
+		}
+	}
+	else
+	{
+		memcpy(q, (int16*)(PcmData.GetData() + offset), requiredDataSize);
+		offset += requiredDataSize;
+	}
 
 	audio_st.tmp_frame->pts = audio_st.next_pts;
 	audio_st.next_pts += audio_st.tmp_frame->nb_samples;
-
 	return audio_st.tmp_frame;
 }
 

@@ -78,7 +78,7 @@ bool MuxerWorker::Init()
 {
 	UE_LOG(LogTemp, Warning, TEXT("init runable"));
 	mMuxer->Initialize(1920, 1080);
-	return true;
+	return true;;
 }
 
 uint32 MuxerWorker::Run()

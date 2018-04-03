@@ -3,6 +3,7 @@
 #include <deque>
 #include <mutex>
 #include <condition_variable>
+#include <climits>
 
 #include "CoreMinimal.h"
 
@@ -10,7 +11,7 @@ template<typename T, int buffsize = 30>
 class Buffer;
 
 using VideoBuffer = Buffer<TArray<FColor>>;
-using AudioBuffer = Buffer<TArray<int16>>;
+//using AudioBuffer = Buffer<int16, std::numeric_limits<uint64>::max()>;
 
 
 /*
@@ -53,6 +54,7 @@ public:
 			return;
 		}
 	}
+
 	/*
 	Blocking remove function.
 	Waits if buffer is empty.
