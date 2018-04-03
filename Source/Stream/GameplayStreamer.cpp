@@ -40,7 +40,7 @@ void AGameplayStreamer::Tick(float DeltaTime)
 // starting filling audio buffer from audio list callbacks(maybe fmod integration)
 void AGameplayStreamer::StartStream()
 {
-	UE_LOG(LogTemp, Warning, TEXT("Starting stream..."));
+	UE_LOG(LogTemp, Warning, TEXT("Starting stream..."));	
 	mWorker = MuxerWorker::JoyInit();
 }
 
@@ -84,7 +84,8 @@ bool MuxerWorker::Init()
 uint32 MuxerWorker::Run()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Run first call"));
-	while (StopTaskCounter.GetValue() == 0) {
+	while (StopTaskCounter.GetValue() == 0)
+	{
 		UE_LOG(LogTemp, Warning, TEXT("Runing"));
 		mMuxer->Mux();
 	}
