@@ -13,6 +13,7 @@ class AStreamGameMode : public AGameModeBase
 
 public:
 	AStreamGameMode();
+	void BeginPlay() override;
 };
 
 

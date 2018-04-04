@@ -4,6 +4,7 @@
 #include "StreamHUD.h"
 #include "StreamCharacter.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Engine.h"
 
 AStreamGameMode::AStreamGameMode()
 	: Super()
@@ -14,4 +15,19 @@ AStreamGameMode::AStreamGameMode()
 
 	// use our custom HUD class
 	HUDClass = AStreamHUD::StaticClass();
+}
+
+void AStreamGameMode::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (GEngine)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Game mode begin played called. Game default configs setting here."));
+		UGameUserSettings* MyGameSettings = GEngine->GetGameUserSettings();
+		MyGameSettings->SetScreenResolution(FIntPoint(1280, 720));
+		MyGameSettings->SetFullscreenMode(EWindowMode::Windowed);
+		MyGameSettings->SetVSyncEnabled(false);
+		MyGameSettings->ApplySettings(false);
+	}
 }

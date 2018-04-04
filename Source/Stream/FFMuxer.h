@@ -54,6 +54,9 @@ public:
 	bool IsReadyToStream() const;
 	void Mux();
 
+	void SetAudioTrack(FString AudioTrackName);
+	bool AudioTrackChanged = false;
+
 private:
 	void Release();
 	void PrintEngineError(FString ErrorString);
@@ -82,8 +85,8 @@ private:
 	bool MuxingLoopStarted = false;
 	int width;
 	int height;
-	const char *filename = "C:/screen/test.mp4";
-	//const char *filename = "rtmp://a.rtmp.youtube.com/live2/qx3p-h110-dddb-306x";
+	//const char *filename = "C:/screen/test.mp4";
+	const char *filename = "rtmp://a.rtmp.youtube.com/live2/qx3p-h110-dddb-306x";
 	FString AudioFileName = "song1.wav";
 	TArray<uint8> AudioFileBuffer;
 	TArray<uint16> Buf;
@@ -102,4 +105,7 @@ private:
 	OutputStream video_st;
 	AudioPCM pcmAudio;
 	TArray<uint8> PcmData; // audio pcm data
+	TArray<uint8> SilentFrame;
+
+
 };

@@ -3,7 +3,7 @@
 #include "GameplayStreamer.h"
 
 #include "Runtime/Core/Public/HAL/RunnableThread.h"
-
+#include "Engine.h"
 #include "FFMuxer.h"
 
 MuxerWorker* MuxerWorker::Runnable = nullptr;
@@ -25,6 +25,9 @@ void AGameplayStreamer::BeginPlay()
 	UE_LOG(LogTemp, Warning, TEXT("BeginPlay"));
 	Super::BeginPlay();
 	this->StartStream();
+
+	// setting timer
+	//GetWorldTimerManager().SetTimer(MemberTimerHandle, this, &AGameplayStreamer::OnTest, 1.0f, true, 1.0f);
 }
 
 
@@ -41,7 +44,8 @@ void AGameplayStreamer::Tick(float DeltaTime)
 void AGameplayStreamer::StartStream()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Starting stream..."));	
-	mWorker = MuxerWorker::JoyInit();
+	mWorker = MuxerWorker::JoyInit();	
+
 }
 
 // stops stream, releases data
@@ -56,6 +60,19 @@ void AGameplayStreamer::PauseStream()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Pause stream..."));
 	MuxerWorker::JoyInit()->Stop();
+}
+
+void AGameplayStreamer::SetAudioTrack(FString AudioTrackName)
+{
+	FCriticalSection Locker;
+	mWorker->mMuxer->SetAudioTrack(AudioTrackName);
+	mWorker->mMuxer->AudioTrackChanged = true;
+}
+
+void AGameplayStreamer::SetSilent()
+{
+	FCriticalSection Locker;
+	mWorker->mMuxer->AudioTrackChanged = false;
 }
 
 MuxerWorker::MuxerWorker()
@@ -75,15 +92,16 @@ MuxerWorker::~MuxerWorker()
 }
 
 bool MuxerWorker::Init()
-{
+{	
 	UE_LOG(LogTemp, Warning, TEXT("init runable"));
-	mMuxer->Initialize(1920, 1080);
+	mMuxer->Initialize(1280, 720);
 	return true;
 }
 
 uint32 MuxerWorker::Run()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Run first call"));
+
 	while (StopTaskCounter.GetValue() == 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Runing"));
@@ -101,8 +119,8 @@ void MuxerWorker::Stop()
 MuxerWorker * MuxerWorker::JoyInit()
 {
 	UE_LOG(LogTemp, Warning, TEXT("create runable"));
-	//Create new instance of thread if it does not exist
-	//		and the platform supports multi threading!
+	// Create new instance of thread if it does not exist
+	// and the platform supports multi threading!
 	if (!Runnable && FPlatformProcess::SupportsMultithreading())
 	{
 		Runnable = new MuxerWorker();
