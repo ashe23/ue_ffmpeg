@@ -37,7 +37,7 @@ struct OutputStream {
 	SwsContext *sws_ctx = nullptr;
 	SwrContext *swr_ctx = nullptr;
 
-	uint8* frame_buf = nullptr;
+	//uint8* frame_buf = nullptr;
 	int audio_buffer_size = 0;
 };
 

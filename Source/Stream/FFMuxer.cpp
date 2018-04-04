@@ -498,7 +498,8 @@ int FFMuxer::WriteVideoFrame()
 	{
 		PrintEngineError("Error while writing video frame");
 	}
-
+	//av_packet_unref(&pkt);
+	//av_frame_free(&frame);
 	return (frame || got_packet) ? 0 : 1;
 }
 
@@ -612,6 +613,7 @@ AVFrame * FFMuxer::GetVideoFrame()
 	FillYUVImage(video_st.frame); // todo rename	
 
 	video_st.frame->pts = video_st.next_pts++;
+	sws_freeContext(video_st.sws_ctx);
 
 	return video_st.frame;
 }
