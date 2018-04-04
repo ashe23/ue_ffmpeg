@@ -97,6 +97,7 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 		TArray<FString> audioList;
 		audioList.Add("song1.wav");
 		audioList.Add("Ambient1.wav");
+		audioList.Add("jlp.wav");
 		AudioManager::GetInstance().addAudioList(audioList);
 		PcmData = AudioManager::GetInstance().getAudio(AudioFileName).getBuffer();
 	}
@@ -629,7 +630,7 @@ AVFrame * FFMuxer::GetVideoFrame()
 
 AVFrame * FFMuxer::GetAudioFrame()
 {
-	int16 *q = (int16*)audio_st.tmp_frame->data[0];	
+	int16 *q = (int16*)audio_st.tmp_frame->data[0];
 	int32 requiredDataSize = audio_st.tmp_frame->nb_samples * sizeof(int32);
 	if (PcmData.Num() < offset + requiredDataSize)
 	{
