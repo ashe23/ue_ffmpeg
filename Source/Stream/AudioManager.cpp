@@ -4,6 +4,8 @@
 #include "Runtime/Core/Public/Misc/FileHelper.h"
 #include "Runtime/Core/Public/Misc/Paths.h"
 
+#include "buffer.h"
+
 // wav offset
 static const int32 OFFSET = 44;
 
@@ -92,4 +94,11 @@ AudioPCM AudioManager::getAudio(const FString & filename) const
 {
 	check(mAudioSet.Contains(filename));
 	return mAudioSet[filename];
+}
+
+void AudioManager::fillAudioInBuffer(const FString& filename)
+{
+	AudioPCM obj = this->getAudio(filename);
+	TArray<uint8> buffer = obj.getBuffer();
+	
 }

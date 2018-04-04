@@ -41,6 +41,7 @@ void UStreamGV::ReadRGBFromViewportToBuffer(FViewport * Viewport)
 	// TODO:ashe23 bottle neck in read pixels, optimize later
 	auto ViewportSize = Viewport->GetSizeXY();
 	TArray<FColor> ColorBuffer;
+	ColorBuffer.Reserve(Viewport->GetSizeXY().X * Viewport->GetSizeXY().Y);
 	if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(),
 		FIntRect(0, 0, ViewportSize.X, ViewportSize.Y)))
 	{

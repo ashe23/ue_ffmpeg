@@ -37,7 +37,7 @@ struct OutputStream {
 	SwsContext *sws_ctx = nullptr;
 	SwrContext *swr_ctx = nullptr;
 
-	uint8* frame_buf = nullptr;
+	//uint8* frame_buf = nullptr;
 	int audio_buffer_size = 0;
 };
 
@@ -85,8 +85,8 @@ private:
 	bool MuxingLoopStarted = false;
 	int width;
 	int height;
-	//const char *filename = "C:/screen/test.mp4";
-	const char *filename = "rtmp://a.rtmp.youtube.com/live2/qx3p-h110-dddb-306x";
+	const char *filename = "C:/screen/test.mp4";
+	//const char *filename = "rtmp://a.rtmp.youtube.com/live2/qx3p-h110-dddb-306x";
 	FString AudioFileName = "song1.wav";
 	TArray<uint8> AudioFileBuffer;
 	TArray<uint16> Buf;

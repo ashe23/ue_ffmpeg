@@ -314,7 +314,7 @@ void FFMuxer::OpenVideo()
 	int ret;
 
 	av_dict_set(&Dictionary, "profile", "high", 0);
-	av_dict_set(&Dictionary, "preset", "slow", 0);
+	av_dict_set(&Dictionary, "preset", "superfast", 0);
 	av_dict_set(&Dictionary, "tune", "zerolatency", 0);
 
 	//video_st.next_pts = 0;
@@ -507,7 +507,8 @@ int FFMuxer::WriteVideoFrame()
 	{
 		PrintEngineError("Error while writing video frame");
 	}
-
+	//av_packet_unref(&pkt);
+	//av_frame_free(&frame);
 	return (frame || got_packet) ? 0 : 1;
 }
 
@@ -621,6 +622,7 @@ AVFrame * FFMuxer::GetVideoFrame()
 	FillYUVImage(video_st.frame); // todo rename	
 
 	video_st.frame->pts = video_st.next_pts++;
+	sws_freeContext(video_st.sws_ctx);
 
 	return video_st.frame;
 }
@@ -628,6 +630,11 @@ AVFrame * FFMuxer::GetVideoFrame()
 AVFrame * FFMuxer::GetAudioFrame()
 {
 	int16 *q = (int16*)audio_st.tmp_frame->data[0];	
+	int32 requiredDataSize = audio_st.tmp_frame->nb_samples * sizeof(int32);
+	if (PcmData.Num() < offset + requiredDataSize)
+	{
+		AudioTrackChanged = false;
+	}
 
 	if (AudioTrackChanged)
 	{
@@ -639,10 +646,8 @@ AVFrame * FFMuxer::GetAudioFrame()
 		memcpy(q, (int16*)(SilentFrame.GetData()), audio_st.tmp_frame->nb_samples * sizeof(int32));
 	}
 
-
 	audio_st.tmp_frame->pts = audio_st.next_pts;
 	audio_st.next_pts += audio_st.tmp_frame->nb_samples;
-
 	return audio_st.tmp_frame;
 }
 
