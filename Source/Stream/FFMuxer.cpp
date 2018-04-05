@@ -92,8 +92,12 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 		CanStream = true;		
 		PrintEngineWarning("Initializing success");
 
+		SilentFrame.SetNumZeroed(4096);
+		// todo: change hardcode later
 		TArray<FString> audioList;
-		audioList.Add(AudioFileName);
+		audioList.Add("song1.wav");
+		audioList.Add("Ambient1.wav");
+		audioList.Add("jlp.wav");
 		AudioManager::GetInstance().addAudioList(audioList);
 		PcmData = AudioManager::GetInstance().getAudio(AudioFileName).getBuffer();
 	}
@@ -121,7 +125,7 @@ void FFMuxer::Mux()
 			{
 				/* select the stream to encode */
 
-				UE_LOG(LogTemp, Warning, TEXT("AudioPTS: %d , VideoPTS: %d"), audio_st.next_pts, video_st.next_pts);
+				//UE_LOG(LogTemp, Warning, TEXT("AudioPTS: %d , VideoPTS: %d"), audio_st.next_pts, video_st.next_pts);
 
 				int DecodeTime = av_compare_ts(video_st.next_pts, video_st.enc->time_base, audio_st.next_pts, audio_st.enc->time_base);
 				if (encode_video && (!encode_audio || DecodeTime <= 0))
@@ -143,6 +147,12 @@ void FFMuxer::Mux()
 			//av_write_trailer(FormatContext);
 		}
 	}
+}
+
+void FFMuxer::SetAudioTrack(FString AudioTrackName)
+{	
+	offset = 0;
+	PcmData = AudioManager::GetInstance().getAudio(AudioTrackName).getBuffer();
 }
 
 void FFMuxer::Release()
@@ -622,19 +632,19 @@ AVFrame * FFMuxer::GetAudioFrame()
 {
 	int16 *q = (int16*)audio_st.tmp_frame->data[0];
 	int32 requiredDataSize = audio_st.tmp_frame->nb_samples * sizeof(int32);
-
 	if (PcmData.Num() < offset + requiredDataSize)
 	{
-		// fill empty audio
-		for (int i = 0; i < requiredDataSize / 2; ++i)
-		{
-			*q++ = 0;
-		}
+		AudioTrackChanged = false;
+	}
+
+	if (AudioTrackChanged)
+	{
+		memcpy(q, (int16*)(PcmData.GetData() + offset), audio_st.tmp_frame->nb_samples * sizeof(int32));
+		offset += audio_st.tmp_frame->nb_samples * sizeof(int32);
 	}
 	else
 	{
-		memcpy(q, (int16*)(PcmData.GetData() + offset), requiredDataSize);
-		offset += requiredDataSize;
+		memcpy(q, (int16*)(SilentFrame.GetData()), audio_st.tmp_frame->nb_samples * sizeof(int32));
 	}
 
 	audio_st.tmp_frame->pts = audio_st.next_pts;

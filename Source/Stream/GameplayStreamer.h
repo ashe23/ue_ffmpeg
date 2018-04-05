@@ -42,12 +42,12 @@ public:
 	/** Makes sure this thread has stopped properly */
 	void EnsureCompletion();
 
+	FFMuxer* mMuxer = nullptr;
 private:
 	MuxerWorker();
 	static MuxerWorker* Runnable;
 
 private:
-	FFMuxer* mMuxer = nullptr;
 	FRunnableThread* mThread = nullptr;
 	FThreadSafeCounter StopTaskCounter = 0;
 };
@@ -78,7 +78,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "GameplayStreaming")
 	void PauseStream();
 
+	UFUNCTION(BlueprintCallable, Category = "GameplayStreaming")
+	void SetAudioTrack(FString AudioTrackName);
+
+	UFUNCTION(BlueprintCallable, Category = "GameplayStreaming")
+	void SetSilent();
+
 private:
 	MuxerWorker* mWorker;
+
+	FTimerHandle MemberTimerHandle;
 	
 };
