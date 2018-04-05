@@ -600,7 +600,7 @@ AVFrame * FFMuxer::GetVideoFrame()
 	}
 
 	video_st.sws_ctx = sws_getContext(video_st.enc->width, video_st.enc->height,
-		AV_PIX_FMT_RGBA,
+		AV_PIX_FMT_BGRA,
 		video_st.enc->width, video_st.enc->height,
 		video_st.enc->pix_fmt,
 		SCALE_FLAGS, NULL, NULL, NULL);
@@ -662,32 +662,11 @@ void FFMuxer::CloseAudioStream()
 
 void FFMuxer::FillYUVImage(AVFrame* Frame)
 {
-	//FIntPoint ViewportSize = FIntPoint(width, height);
-
-	// Reading actual pixel data of single frame from viewport
-	//TArray<FColor> ColorBuffer;
-	TArray<uint8> SingleFrameBuffer;
-	auto ColorBuffer = VideoBuffer::GetInstance().remove();
-
-	// converting from TArray to const uint8*
-	SingleFrameBuffer.Empty();
-	SingleFrameBuffer.SetNumZeroed(ColorBuffer.Num() * 4);
-	uint8* DestPtr = nullptr;
-	for (auto i = 0; i < ColorBuffer.Num(); i++)
-	{
-		DestPtr = &SingleFrameBuffer[i * 4];
-		auto SrcPtr = ColorBuffer[i];
-		*DestPtr++ = SrcPtr.R;
-		*DestPtr++ = SrcPtr.G;
-		*DestPtr++ = SrcPtr.B;
-		*DestPtr++ = SrcPtr.A;
-	}
+	TArray<FColor> ColorBuffer = VideoBuffer::GetInstance().remove();
+	const uint8* inputData = (uint8*)ColorBuffer.GetData();
 
 	// filling frame with actual data
 	int InLineSize[1];
 	InLineSize[0] = 4 * video_st.enc->width;
-	uint8* inData[1] = { SingleFrameBuffer.GetData() };
-
-	// Crushing IF PLAYING in PIE OR WITH wrong Sizes
-	sws_scale(video_st.sws_ctx, inData, InLineSize, 0, video_st.enc->height, Frame->data, Frame->linesize);
+	sws_scale(video_st.sws_ctx, &inputData, InLineSize, 0, video_st.enc->height, Frame->data, Frame->linesize);
 }
