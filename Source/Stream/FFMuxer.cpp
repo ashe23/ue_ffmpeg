@@ -92,14 +92,13 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 		CanStream = true;		
 		PrintEngineWarning("Initializing success");
 
-		SilentFrame.SetNumZeroed(4096);
-		// todo: change hardcode later
-		TArray<FString> audioList;
-		audioList.Add("song1.wav");
-		audioList.Add("Ambient1.wav");
-		audioList.Add("jlp.wav");
-		AudioManager::GetInstance().addAudioList(audioList);
-		PcmData = AudioManager::GetInstance().getAudio(AudioFileName).getBuffer();
+
+		auto size = av_samples_get_buffer_size(nullptr, audio_st.enc->channels, audio_st.enc->frame_size, audio_st.enc->sample_fmt, 1);
+		
+		SilentFrame.SetNumZeroed(size);
+		
+		// by default silent will be muxed
+		PcmData = SilentFrame;
 	}
 }
 
@@ -147,6 +146,20 @@ void FFMuxer::Mux()
 			//av_write_trailer(FormatContext);
 		}
 	}
+}
+
+void FFMuxer::FillAudioBuffer(TArray<FString>& Tracks)
+{	
+	if (Tracks.Num())
+	{
+		for (const auto Track : Tracks)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Track Name: %s"), *Track);
+		}
+	}
+
+	AudioManager::GetInstance().Empty();
+	AudioManager::GetInstance().addAudioList(Tracks);
 }
 
 void FFMuxer::SetAudioTrack(FString AudioTrackName)
@@ -281,18 +294,7 @@ void FFMuxer::AddAudioStream()
 	audio_st.enc->sample_fmt = AV_SAMPLE_FMT_FLTP;
 	//audio_st.enc->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL;
 	audio_st.enc->bit_rate = 192000;
-	audio_st.enc->sample_rate = 44100;
-	/*if (AudioCodec->supported_samplerates) 
-	{
-		audio_st.enc->sample_rate = AudioCodec->supported_samplerates[0];
-		for (i = 0; AudioCodec->supported_samplerates[i]; i++) 
-		{
-			if (AudioCodec->supported_samplerates[i] == 44100)
-			{
-				audio_st.enc->sample_rate = 44100;
-			}
-		}
-	}*/
+	audio_st.enc->sample_rate = 44100;	
 	audio_st.enc->channels = av_get_channel_layout_nb_channels(audio_st.enc->channel_layout);
 	audio_st.enc->channel_layout = AV_CH_LAYOUT_STEREO;
 	if (AudioCodec->channel_layouts) 
@@ -369,12 +371,6 @@ void FFMuxer::OpenAudio()
 		return;
 	}
 
-	/* init signal generator */
-	audio_st.t = 0;
-	audio_st.tincr = 2 * M_PI * 110.0 / audio_st.enc->sample_rate;
-	/* increment frequency by 110 Hz per second */
-	audio_st.tincr2 = 2 * M_PI * 110.0 / audio_st.enc->sample_rate / audio_st.enc->sample_rate;
-	//audio_st.next_pts = 0;
 
 	if (audio_st.enc->codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE)
 	{
@@ -529,8 +525,6 @@ int FFMuxer::WriteAudioFrame()
 	{
 		/* convert samples from native format to destination codec format, using the resampler */
 		/* compute destination number of samples */
-		//auto a = swr_get_delay(audio_st.swr_ctx, audio_st.enc->sample_rate);
-		//UE_LOG(LogTemp, Warning, TEXT("A:%d"), a);
 		dst_nb_samples = av_rescale_rnd(frame->nb_samples, audio_st.enc->sample_rate, audio_st.enc->sample_rate, AV_ROUND_UP);
 		av_assert0(dst_nb_samples == frame->nb_samples);
 
@@ -594,13 +588,7 @@ int FFMuxer::WriteFrame(const AVRational * time_base, AVStream * st, AVPacket * 
 
 AVFrame * FFMuxer::GetVideoFrame()
 {
-	/* check if we want to generate more frames */
-	/*if (av_compare_ts(video_st.next_pts, video_st.enc->time_base, STREAM_DURATION, GetRational(1, 1)) >= 0)
-	{
-		CanStream = false;
-		return nullptr;
-	}*/
-
+	
 	/* when we pass a frame to the encoder, it may keep a reference to it
 	* internally; make sure we do not overwrite it here */
 	if (av_frame_make_writable(video_st.frame) < 0)
