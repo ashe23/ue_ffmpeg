@@ -42,8 +42,7 @@ void UStreamGV::ReadRGBFromViewportToBuffer(FViewport * Viewport)
 	auto ViewportSize = Viewport->GetSizeXY();
 	TArray<FColor> ColorBuffer;
 	ColorBuffer.Reserve(Viewport->GetSizeXY().X * Viewport->GetSizeXY().Y);
-	if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(),
-		FIntRect(0, 0, ViewportSize.X, ViewportSize.Y)))
+	if (!Viewport->ReadPixels(ColorBuffer, FReadSurfaceDataFlags(),	FIntRect(0, 0, ViewportSize.X, ViewportSize.Y)))
 	{
 		UE_LOG(LogTemp, Error, TEXT("Cannot read from viewport.Aborting"));
 		return;

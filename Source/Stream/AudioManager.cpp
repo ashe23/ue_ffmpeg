@@ -3,7 +3,7 @@
 #include "Runtime/Core/Public/HAL/PlatformFilemanager.h"
 #include "Runtime/Core/Public/Misc/FileHelper.h"
 #include "Runtime/Core/Public/Misc/Paths.h"
-
+#include "Engine.h"
 #include "buffer.h"
 
 // wav offset
@@ -23,6 +23,17 @@ AudioPCM::AudioPCM(const FString& name) :
 	mName(name)
 {
 	FString AudioFilePath = FPaths::ProjectDir() + "/ThirdParty/audio/" + name;
+	if (GEngine)
+	{
+		if (FPaths::FileExists(AudioFilePath))
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, FString::Printf(TEXT("Found '%s' File!"), *AudioFilePath));
+		}
+		else
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, FString::Printf(TEXT("File '%s' not found!"), *AudioFilePath));
+		}
+	}
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 	IFileHandle* FileHandle = PlatformFile.OpenRead(*AudioFilePath);
 
@@ -91,7 +102,7 @@ void AudioManager::addAudioList(const TArray<FString>& filenames)
 }
 
 AudioPCM AudioManager::getAudio(const FString & filename) const
-{
+{	
 	check(mAudioSet.Contains(filename));
 	return mAudioSet[filename];
 }
@@ -101,4 +112,9 @@ void AudioManager::fillAudioInBuffer(const FString& filename)
 	AudioPCM obj = this->getAudio(filename);
 	TArray<uint8> buffer = obj.getBuffer();
 	
+}
+
+void AudioManager::Empty()
+{
+	mAudioSet.Empty();
 }

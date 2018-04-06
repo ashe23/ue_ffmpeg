@@ -25,9 +25,6 @@ void AGameplayStreamer::BeginPlay()
 	UE_LOG(LogTemp, Warning, TEXT("BeginPlay"));
 	Super::BeginPlay();
 	this->StartStream();
-
-	// setting timer
-	//GetWorldTimerManager().SetTimer(MemberTimerHandle, this, &AGameplayStreamer::OnTest, 1.0f, true, 1.0f);
 }
 
 
@@ -35,7 +32,6 @@ void AGameplayStreamer::BeginPlay()
 void AGameplayStreamer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
 }
 
 // in this stage we initializing ffmpeg
@@ -44,16 +40,19 @@ void AGameplayStreamer::Tick(float DeltaTime)
 void AGameplayStreamer::StartStream()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Starting stream..."));	
-	mWorker = MuxerWorker::JoyInit();	
+	mWorker = MuxerWorker::JoyInit();
 
+	if (mWorker)
+	{
+		mWorker->mMuxer->FillAudioBuffer(AudioTracks);
+	}
 }
 
 // stops stream, releases data
 void AGameplayStreamer::StopStream()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Stop stream..."));
-	MuxerWorker::JoyInit()->Stop();
-	
+	MuxerWorker::JoyInit()->Stop();	
 }
 // pauses stream, but not realeasing data
 void AGameplayStreamer::PauseStream()
@@ -64,15 +63,45 @@ void AGameplayStreamer::PauseStream()
 
 void AGameplayStreamer::SetAudioTrack(FString AudioTrackName)
 {
-	FCriticalSection Locker;
-	mWorker->mMuxer->SetAudioTrack(AudioTrackName);
-	mWorker->mMuxer->AudioTrackChanged = true;
+	if (mWorker)
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Orange, FString::Printf(TEXT("Setting current audio track to : %s"), *AudioTrackName));
+		}
+		FCriticalSection Locker;
+		mWorker->mMuxer->SetAudioTrack(AudioTrackName);
+		mWorker->mMuxer->AudioTrackChanged = true;
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Worker not initialized yet!!!"));
+	}
 }
 
 void AGameplayStreamer::SetSilent()
 {
-	FCriticalSection Locker;
-	mWorker->mMuxer->AudioTrackChanged = false;
+	if (mWorker)
+	{
+		FCriticalSection Locker;
+		mWorker->mMuxer->AudioTrackChanged = false;
+	}
+}
+
+void AGameplayStreamer::FillAudioBuffers(TArray<FString> Tracks)
+{
+	if (Tracks.Num())
+	{
+		for (const auto Track : Tracks)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Track Name: %s"), *Track);
+		}
+	}
+	if (mWorker)
+	{
+		FCriticalSection Locker;
+		mWorker->mMuxer->FillAudioBuffer(Tracks);
+	}
 }
 
 MuxerWorker::MuxerWorker()

@@ -84,9 +84,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "GameplayStreaming")
 	void SetSilent();
 
-private:
-	MuxerWorker* mWorker;
+	UFUNCTION(BlueprintCallable, Category = "GameplayStreaming")
+	void FillAudioBuffers(TArray<FString> AudioBuffers);
 
-	FTimerHandle MemberTimerHandle;
-	
+	UPROPERTY(BlueprintReadWrite,EditAnywhere, Category = "GameplayStreaming")
+	TArray<FString> AudioTracks;
+private:
+	MuxerWorker* mWorker;	
 };

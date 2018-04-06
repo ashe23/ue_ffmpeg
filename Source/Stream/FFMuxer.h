@@ -54,9 +54,9 @@ public:
 	bool IsReadyToStream() const;
 	void Mux();
 
+	void FillAudioBuffer(TArray<FString>& Tracks);
 	void SetAudioTrack(FString AudioTrackName);
 	bool AudioTrackChanged = false;
-
 private:
 	void Release();
 	void PrintEngineError(FString ErrorString);
