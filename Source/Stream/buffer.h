@@ -7,21 +7,64 @@
 
 #include "CoreMinimal.h"
 
-template<typename T, int buffsize = 30>
+#include "BufferPolicies.h"
+
+
+/*
+Blocking add Policy.
+Thread waits if buffer 
+size reachs it limit.
+*/
+struct AddBlocking
+{
+	template <typename Lock, typename CondVarT, typename BufferT, typename BufferSizeT, typename ElemT>
+	void operator() (Lock& lock, CondVarT& condVar, BufferT& buffer, const BufferSizeT size, ElemT e)
+	{
+		std::unique_lock<std::mutex> locker(lock);
+		condVar.wait(locker, [&]() {return buffer.size() < size; });
+		buffer.push_back(e);
+		locker.unlock();
+		condVar.notify_all();
+	}
+};
+
+/*
+Blocking remove Policy.
+Thread waits if buffer
+is empty.
+*/
+struct RemoveBlocking
+{
+	template <typename Lock, typename CondVarT, typename BufferT>
+	auto operator() (Lock& lock, CondVarT& condVar, BufferT& buffer)
+	{
+		std::unique_lock<std::mutex> locker(lock);
+		condVar.wait(locker, [&]() {return buffer.size() > 0; });
+		BufferT::value_type back = buffer.front();
+		buffer.pop_front();
+		locker.unlock();
+		condVar.notify_all();
+		return back;
+	}
+};
+
+template<typename T, typename ContainerT = std::deque<TArray<FColor>>, size_t buffsize = 1, 
+	typename AddPolicy = AddBlocking, typename RemovePolicy = RemoveBlocking>
 class Buffer;
 
-using VideoBuffer = Buffer<TArray<FColor>>;
+using VideoBuffer = Buffer<TArray<FColor>, std::deque<TArray<FColor>>, 30, RemoveOldElements, RemoveBlocking>;
 //using AudioBuffer = Buffer<int16, std::numeric_limits<uint64>::max()>;
-
 
 /*
 class Buffer represents a
 thread safe buffer for producer 
 consumer scenario usage.
 */
-template<typename T, int buffsize>
+template<typename T, typename ContainerT, size_t buffsize, typename AddPolicy, typename RemovePolicy>
 class Buffer
 {
+	static_assert( buffsize == 0, "Buffersize must be more than 0");
+
 public:
 	/*
 	Buffer<T>::GetInstance() creates
@@ -33,43 +76,18 @@ public:
 		return instance;
 	}
 
-	/*
-	Non blocking add funcion.
-	Consider making policy of removing oldest
-	elements as a template parameter
-	*/
 	void add(T& num) {
 		UE_LOG(LogTemp, Log, TEXT("add, size = %d"), buffer_.size());
-		while (true) {
-			std::unique_lock<std::mutex> locker(mu);
-			//cond.wait(locker, [this]() {return buffer_.size() < size_; });
-			if (buffer_.size() == size_) {
-				// remove oldest 10 elems
-				buffer_.erase(buffer_.begin(), buffer_.begin() + 10);
-			}
-
-			buffer_.push_back(num);
-			locker.unlock();
-			cond.notify_all();
-			return;
-		}
+		AddPolicy obj;
+		obj(mu, cond, buffer_, buffsize, num);
+		return;
 	}
 
-	/*
-	Blocking remove function.
-	Waits if buffer is empty.
-	*/
 	T remove() {
 		UE_LOG(LogTemp, Log, TEXT("remove, size = %d"), buffer_.size());
-		while (true) {
-			std::unique_lock<std::mutex> locker(mu);
-			cond.wait(locker, [this]() {return buffer_.size() > 0; });
-			T back = buffer_.front();
-			buffer_.pop_front();
-			locker.unlock();
-			cond.notify_all();
-			return back;
-		}
+		RemovePolicy obj;
+		T res = obj(mu, cond, buffer_);
+		return res;
 	}
 
 private:
@@ -81,6 +99,6 @@ private:
 	std::condition_variable cond;
 
 	std::deque<T> buffer_;
-	const unsigned int size_ = buffsize;
+	const size_t size_ = buffsize;
 };
 
