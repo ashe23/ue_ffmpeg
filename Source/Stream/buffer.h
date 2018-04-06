@@ -63,7 +63,7 @@ consumer scenario usage.
 template<typename T, typename ContainerT, size_t buffsize, typename AddPolicy, typename RemovePolicy>
 class Buffer
 {
-	static_assert( buffsize == 0, "Buffersize must be more than 0");
+	static_assert( buffsize != 0, "Buffersize must be more than 0");
 
 public:
 	/*
