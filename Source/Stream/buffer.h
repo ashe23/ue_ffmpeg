@@ -9,10 +9,10 @@
 
 #include "BufferPolicies.h"
 
-template<typename T, size_t buffsize = 1, typename AddPolicy = AddBlocking, typename RemovePolicy = RemoveBlocking>
+template<typename T, size_t buffsize = 1, typename Adder = BlockingAdder, typename Remover = BlockingRemover>
 class Buffer;
 
-using VideoBuffer = Buffer<TArray<FColor>, 30, RemoveOldElements, RemoveBlocking>;
+using VideoBuffer = Buffer<TArray<FColor>, 30, RemoveOldElementsAdder, BlockingRemover>;
 //using AudioBuffer = Buffer<int16, std::numeric_limits<uint64>::max()>;
 
 /*
@@ -20,10 +20,13 @@ class Buffer represents a
 thread safe buffer for producer 
 consumer scenario usage.
 */
-template<typename T, size_t buffsize, typename AddPolicy, typename RemovePolicy>
+template<typename T, size_t buffsize, typename Adder, typename Remover>
 class Buffer
 {
-	static_assert( buffsize != 0, "Buffersize must be more than 0");
+	static_assert(std::is_copy_constructible<T>::value, "Buffer element must be copyable");
+	static_assert(buffsize != 0, "Buffersize must be more than 0");
+	static_assert(IsAdder<Adder, std::deque<T>>::Is == true, "not an Adder");
+	static_assert(IsRemover<Remover, std::deque<T>>::Is == true, "not a Remover");
 
 public:
 	/*
@@ -38,14 +41,14 @@ public:
 
 	void add(T& num) {
 		UE_LOG(LogTemp, Log, TEXT("add, size = %d"), buffer_.size());
-		AddPolicy obj;
+		Adder obj;
 		obj(mu, cond, buffer_, buffsize, num);
 		return;
 	}
 
 	T remove() {
 		UE_LOG(LogTemp, Log, TEXT("remove, size = %d"), buffer_.size());
-		RemovePolicy obj;
+		Remover obj;
 		T res = obj(mu, cond, buffer_);
 		return res;
 	}

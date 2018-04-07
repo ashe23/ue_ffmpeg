@@ -1,15 +1,51 @@
 #pragma once
 
+template<typename T, typename BufferT>
+struct IsAdder
+{
+	typedef typename BufferT::value_type vType;
+	template<typename U, typename BufferT, void(U::*)(std::mutex&, std::condition_variable&,
+		BufferT&, size_t, vType) >
+	struct SFINAE 
+	{
+	};
+
+	template<typename U, typename BufferT> static char Test(SFINAE<U, BufferT, &U::operator()>*) {
+		return char();
+	}
+	template<typename U, typename BufferT> static int Test(...) {
+		return int();
+	}
+	static const bool Is = sizeof(Test<T, BufferT>(0)) == sizeof(char);
+};
+
+template<typename T, typename BufferT>
+struct IsRemover
+{
+	typedef typename BufferT::value_type vType;
+	template<typename U, typename BufferT, vType(U::*)(std::mutex&, std::condition_variable&, BufferT&) >
+		struct SFINAE
+	{
+	};
+
+	template<typename U, typename BufferT> static char Test(SFINAE<U, BufferT, &U::operator()>*) {
+		return char();
+	}
+	template<typename U, typename BufferT> static int Test(...) {
+		return int();
+	}
+	static const bool Is = sizeof(Test<T, BufferT>(0)) == sizeof(char);
+};
 
 /*
 Blocking add Policy.
 Thread waits if buffer
 size reachs it limit.
 */
-struct AddBlocking
+struct BlockingAdder
 {
-	template <typename BufferT, typename ElemT>
-	void operator() (std::mutex& lock, std::condition_variable& condVar, BufferT& buffer, size_t size, ElemT e)
+	template <typename BufferT>
+	void operator() (std::mutex& lock, std::condition_variable& condVar, BufferT& buffer, size_t size, const typename BufferT::value_type e)
 	{
 		std::unique_lock<std::mutex> locker(lock);
 		condVar.wait(locker, [&]() {return buffer.size() < size; });
@@ -24,10 +60,10 @@ Blocking remove Policy.
 Thread waits if buffer
 is empty.
 */
-struct RemoveBlocking
+struct BlockingRemover
 {
 	template <typename BufferT>
-	auto operator() (std::mutex& lock, std::condition_variable& condVar, BufferT& buffer)
+	typename BufferT::value_type operator() (std::mutex& lock, std::condition_variable& condVar, BufferT& buffer)
 	{
 		std::unique_lock<std::mutex> locker(lock);
 		condVar.wait(locker, [&]() {return buffer.size() > 0; });
@@ -44,10 +80,10 @@ Non blocking add Policy
 which removes old elements
 to make room for new ones.
 */
-struct RemoveOldElements
+struct RemoveOldElementsAdder
 {
-	template <typename BufferT, typename ElemT>
-	void operator() (std::mutex& lock, std::condition_variable& condVar, BufferT& buffer, size_t size, ElemT e)
+	template <typename BufferT>
+	void operator() (std::mutex& lock, std::condition_variable& condVar, BufferT& buffer, size_t size, const typename BufferT::value_type e)
 	{
 		std::unique_lock<std::mutex> locker(lock);
 		if (buffer.size() == size) {
@@ -64,10 +100,10 @@ Non blocking add Policy
 which removes every 3rd element
 to make room for new ones.
 */
-//struct RemoveOldElements
+//struct RemoveOldElementsAdder
 //{
-//	template <typename BufferT, typename ElemT>
-//	void operator() (std::mutex& lock, std::condition_variable& condVar, BufferT& buffer, size_t size, ElemT e)
+//	template <typename BufferT>
+//	void operator() (std::mutex& lock, std::condition_variable& condVar, BufferT& buffer, size_t size, const typename BufferT::value_type e)
 //	{
 //		std::unique_lock<std::mutex> locker(lock);
 //		if (buffer.size() == size) {
@@ -85,10 +121,10 @@ which returns default constructed
 element in case there are no
 elements in buffer.
 */
-struct RemoveNonBlocking
+struct NonBlockingRemover
 {
 	template <typename BufferT>
-	auto operator() (std::mutex& lock, std::condition_variable& condVar, BufferT& buffer)
+	typename BufferT::value_type operator() (std::mutex& lock, std::condition_variable& condVar, BufferT& buffer)
 	{
 		std::unique_lock<std::mutex> locker(lock);
 		BufferT::value_type res;
