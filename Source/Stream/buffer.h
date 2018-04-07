@@ -17,8 +17,8 @@ size reachs it limit.
 */
 struct AddBlocking
 {
-	template <typename Lock, typename CondVarT, typename BufferT, typename BufferSizeT, typename ElemT>
-	void operator() (Lock& lock, CondVarT& condVar, BufferT& buffer, const BufferSizeT size, ElemT e)
+	template <typename Lock, typename CondVarT, typename BufferT, typename ElemT>
+	void operator() (Lock& lock, CondVarT& condVar, BufferT& buffer, size_t size, ElemT e)
 	{
 		std::unique_lock<std::mutex> locker(lock);
 		condVar.wait(locker, [&]() {return buffer.size() < size; });
@@ -48,11 +48,10 @@ struct RemoveBlocking
 	}
 };
 
-template<typename T, typename ContainerT = std::deque<TArray<FColor>>, size_t buffsize = 1, 
-	typename AddPolicy = AddBlocking, typename RemovePolicy = RemoveBlocking>
+template<typename T, size_t buffsize = 1, typename AddPolicy = AddBlocking, typename RemovePolicy = RemoveBlocking>
 class Buffer;
 
-using VideoBuffer = Buffer<TArray<FColor>, std::deque<TArray<FColor>>, 30, RemoveOldElements, RemoveBlocking>;
+using VideoBuffer = Buffer<TArray<FColor>, 30, RemoveOldElements, RemoveBlocking>;
 //using AudioBuffer = Buffer<int16, std::numeric_limits<uint64>::max()>;
 
 /*
@@ -60,7 +59,7 @@ class Buffer represents a
 thread safe buffer for producer 
 consumer scenario usage.
 */
-template<typename T, typename ContainerT, size_t buffsize, typename AddPolicy, typename RemovePolicy>
+template<typename T, size_t buffsize, typename AddPolicy, typename RemovePolicy>
 class Buffer
 {
 	static_assert( buffsize != 0, "Buffersize must be more than 0");

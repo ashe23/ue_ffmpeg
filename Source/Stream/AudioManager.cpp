@@ -107,13 +107,6 @@ AudioPCM AudioManager::getAudio(const FString & filename) const
 	return mAudioSet[filename];
 }
 
-void AudioManager::fillAudioInBuffer(const FString& filename)
-{
-	AudioPCM obj = this->getAudio(filename);
-	TArray<uint8> buffer = obj.getBuffer();
-	
-}
-
 void AudioManager::Empty()
 {
 	mAudioSet.Empty();

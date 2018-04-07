@@ -40,7 +40,6 @@ public:
 
 	void addAudioList(const TArray<FString>& filenames);
 	AudioPCM getAudio(const FString& filename) const;
-	void fillAudioInBuffer(const FString& filename);
 	void Empty();
 
 private:

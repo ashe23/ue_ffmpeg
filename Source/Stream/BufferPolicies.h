@@ -7,8 +7,8 @@ to make room for new ones.
 */
 struct RemoveOldElements
 {
-	template <typename Lock, typename CondVarT, typename BufferT, typename BufferSizeT, typename ElemT>
-	void operator() (Lock& lock, CondVarT& condVar, BufferT& buffer, const BufferSizeT size, ElemT e)
+	template <typename Lock, typename CondVarT, typename BufferT, typename ElemT>
+	void operator() (Lock& lock, CondVarT& condVar, BufferT& buffer, size_t size, ElemT e)
 	{
 		std::unique_lock<std::mutex> locker(lock);
 		if (buffer.size() == size) {
@@ -27,8 +27,8 @@ to make room for new ones.
 */
 //struct RemoveOldElements
 //{
-//	template <typename Lock, typename CondVarT, typename BufferT, typename BufferSizeT, typename ElemT>
-//	void operator() (Lock& lock, CondVarT& condVar, BufferT& buffer, const BufferSizeT size, ElemT e)
+//	template <typename Lock, typename CondVarT, typename BufferT, typename ElemT>
+//	void operator() (Lock& lock, CondVarT& condVar, BufferT& buffer, size_t size, ElemT e)
 //	{
 //		std::unique_lock<std::mutex> locker(lock);
 //		if (buffer.size() == size) {
