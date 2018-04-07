@@ -9,45 +9,6 @@
 
 #include "BufferPolicies.h"
 
-
-/*
-Blocking add Policy.
-Thread waits if buffer 
-size reachs it limit.
-*/
-struct AddBlocking
-{
-	template <typename Lock, typename CondVarT, typename BufferT, typename ElemT>
-	void operator() (Lock& lock, CondVarT& condVar, BufferT& buffer, size_t size, ElemT e)
-	{
-		std::unique_lock<std::mutex> locker(lock);
-		condVar.wait(locker, [&]() {return buffer.size() < size; });
-		buffer.push_back(e);
-		locker.unlock();
-		condVar.notify_all();
-	}
-};
-
-/*
-Blocking remove Policy.
-Thread waits if buffer
-is empty.
-*/
-struct RemoveBlocking
-{
-	template <typename Lock, typename CondVarT, typename BufferT>
-	auto operator() (Lock& lock, CondVarT& condVar, BufferT& buffer)
-	{
-		std::unique_lock<std::mutex> locker(lock);
-		condVar.wait(locker, [&]() {return buffer.size() > 0; });
-		BufferT::value_type back = buffer.front();
-		buffer.pop_front();
-		locker.unlock();
-		condVar.notify_all();
-		return back;
-	}
-};
-
 template<typename T, size_t buffsize = 1, typename AddPolicy = AddBlocking, typename RemovePolicy = RemoveBlocking>
 class Buffer;
 
