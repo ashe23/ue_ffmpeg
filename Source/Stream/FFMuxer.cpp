@@ -89,16 +89,21 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 			return;
 		}				
 		
-		CanStream = true;		
-		PrintEngineWarning("Initializing success");
 
 
 		auto size = av_samples_get_buffer_size(nullptr, audio_st.enc->channels, audio_st.enc->frame_size, audio_st.enc->sample_fmt, 1);
-		
+		if (size < 0)
+		{
+			return;			
+		}
+
 		SilentFrame.SetNumZeroed(size);
-		
+
 		// by default silent will be muxed
 		PcmData = SilentFrame;
+
+		PrintEngineWarning("Initializing success");
+		CanStream = true;		
 	}
 }
 

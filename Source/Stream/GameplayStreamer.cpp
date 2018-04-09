@@ -24,7 +24,23 @@ void AGameplayStreamer::BeginPlay()
 {
 	UE_LOG(LogTemp, Warning, TEXT("BeginPlay"));
 	Super::BeginPlay();
-	this->StartStream();
+
+	auto World = GetWorld();
+	if (World)
+	{
+		MainGameMode = (AStreamGameMode*)World->GetAuthGameMode();
+		if (MainGameMode)
+		{
+			FTimerHandle MemberTimerHandle;
+			GetWorldTimerManager().SetTimer(MemberTimerHandle, this, &AGameplayStreamer::Test, 1.0f, false, 10.0f);
+		}
+	}
+	//this->StartStream();
+}
+
+void AGameplayStreamer::Test()
+{
+	MainGameMode->CanStream = true;
 }
 
 

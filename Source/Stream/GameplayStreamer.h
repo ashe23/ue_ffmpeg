@@ -6,6 +6,7 @@
 #include "Async.h"
 #include "GameFramework/Actor.h"
 #include "Runtime/Core/Public/Templates/UniquePtr.h"
+#include "StreamGameMode.h"
 
 #include <thread>
 #include <mutex>
@@ -91,4 +92,7 @@ public:
 	TArray<FString> AudioTracks;
 private:
 	MuxerWorker* mWorker;	
+	AStreamGameMode* MainGameMode = nullptr;
+
+	void Test();
 };
