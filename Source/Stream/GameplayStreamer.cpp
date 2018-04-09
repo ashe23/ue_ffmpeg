@@ -90,13 +90,11 @@ void AGameplayStreamer::SetSilent()
 
 void AGameplayStreamer::FillAudioBuffers(TArray<FString> Tracks)
 {
-	if (Tracks.Num())
+	for (const auto Track : Tracks)
 	{
-		for (const auto Track : Tracks)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Track Name: %s"), *Track);
-		}
+		UE_LOG(LogTemp, Warning, TEXT("Track Name: %s"), *Track);
 	}
+
 	if (mWorker)
 	{
 		FCriticalSection Locker;
