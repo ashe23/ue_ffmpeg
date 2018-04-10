@@ -89,10 +89,11 @@ public:
 	void FillAudioBuffers(TArray<FString> AudioBuffers);
 
 	UPROPERTY(BlueprintReadWrite,EditAnywhere, Category = "GameplayStreaming")
-	TArray<FString> AudioTracks;
+	TArray<FString> AudioTracks;	
 private:
-	MuxerWorker* mWorker;	
-	AStreamGameMode* MainGameMode = nullptr;
+	MuxerWorker* mWorker;
 
-	void Test();
+	class UStreamDataSingleton* StreamDataSingleton = nullptr;
+
+	void SetGameSingletonClass();
 };

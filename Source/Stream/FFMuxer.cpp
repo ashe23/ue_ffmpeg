@@ -154,13 +154,18 @@ void FFMuxer::Mux()
 }
 
 void FFMuxer::FillAudioBuffer(TArray<FString>& Tracks)
-{	
+{
 	if (Tracks.Num())
 	{
 		for (const auto Track : Tracks)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Track Name: %s"), *Track);
 		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("Empty Audio track list"));
+		return;
 	}
 
 	AudioManager::GetInstance().Empty();
@@ -170,6 +175,7 @@ void FFMuxer::FillAudioBuffer(TArray<FString>& Tracks)
 void FFMuxer::SetAudioTrack(FString AudioTrackName)
 {	
 	offset = 0;
+	UE_LOG(LogTemp, Warning, TEXT("Setting audio track: %s"));
 	PcmData = AudioManager::GetInstance().getAudio(AudioTrackName).getBuffer();
 }
 

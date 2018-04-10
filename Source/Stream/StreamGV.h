@@ -29,7 +29,7 @@ class STREAM_API UStreamGV : public UGameViewportClient
 
 private:
 	FFMuxer* Muxer = nullptr;
-	AStreamGameMode* MainGameMode = nullptr;
+	class UStreamDataSingleton* StreamDataSingleton = nullptr;
 	void ReadRGBFromViewportToBuffer(FViewport *Viewport);
-	bool SetGameMode();
+	bool SetSingleton();
 };

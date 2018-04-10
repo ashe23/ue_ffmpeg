@@ -3,6 +3,7 @@
 #include "StreamGV.h"
 #include "Engine.h"
 #include "buffer.h"
+#include "StreamDataSingleton.h"
 
 DECLARE_CYCLE_STAT(TEXT("ReadPixels"), STAT_ReadPixels, STATGROUP_FFGameplayStreaming);
 DECLARE_CYCLE_STAT(TEXT("StreamGV Draw function"), STAT_StreamGVDraw, STATGROUP_FFGameplayStreaming);
@@ -11,9 +12,9 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 {
 	Super::Draw(Viewport, SceneCanvas);
 	
-	SCOPE_CYCLE_COUNTER(STAT_StreamGVDraw);
+	SCOPE_CYCLE_COUNTER(STAT_StreamGVDraw);	
 
-	if (!SetGameMode())
+	if (!SetSingleton())
 	{
 		UE_LOG(LogTemp, Error, TEXT("Game mode not setted"));
 		return;
@@ -31,13 +32,14 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 		return;
 	}
 
-	check(MainGameMode);
+	check(StreamDataSingleton);
 
-	if (MainGameMode->CanStream)
+	UE_LOG(LogTemp, Warning, TEXT("CanStream in singleton : %s"), StreamDataSingleton->CanStream ? TEXT("True") : TEXT("False"));
+
+	if (StreamDataSingleton->CanStream)
 	{
 		ReadRGBFromViewportToBuffer(Viewport);
 	}
-
 }
 
 void UStreamGV::BeginDestroy()
@@ -73,27 +75,26 @@ void UStreamGV::ReadRGBFromViewportToBuffer(FViewport * Viewport)
 }
 
 // Sets game mode if its not exists
-bool UStreamGV::SetGameMode()
+bool UStreamGV::SetSingleton()
 {
-	if (!MainGameMode)
+	if (!StreamDataSingleton)
 	{
-		if (GetWorld())
+		if (GEngine)
 		{
-			auto Gm = (AStreamGameMode*)GetWorld()->GetAuthGameMode();
-			if (Gm)
+			StreamDataSingleton = (UStreamDataSingleton*)GEngine->GameSingleton;
+			if (StreamDataSingleton)
 			{
-				MainGameMode = Gm;
 				return true;
 			}
 			else
 			{
-				UE_LOG(LogTemp, Error, TEXT("Game Mode is null"));
+				UE_LOG(LogTemp, Error, TEXT("StreamDataSingleton not found"));
 				return false;
 			}
 		}
 		else
 		{
-			UE_LOG(LogTemp, Error, TEXT("Game world is null"));
+			UE_LOG(LogTemp, Error, TEXT("GEngine is null"));
 			return false;
 		}
 	}
