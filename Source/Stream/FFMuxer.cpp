@@ -99,7 +99,7 @@ void FFMuxer::Initialize(int32 Width, int32 Height)
 
 		SilentFrame.SetNumZeroed(size);
 
-		// by default silent will be muxed
+		// by default silent will be muxed		
 		PcmData = SilentFrame;
 
 		PrintEngineWarning("Initializing success");
@@ -631,6 +631,7 @@ AVFrame * FFMuxer::GetAudioFrame()
 {
 	int16 *q = (int16*)audio_st.tmp_frame->data[0];
 	int32 requiredDataSize = audio_st.tmp_frame->nb_samples * sizeof(int32);
+
 	if (PcmData.Num() < offset + requiredDataSize)
 	{
 		AudioTrackChanged = false;

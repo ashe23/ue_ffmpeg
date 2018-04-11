@@ -31,5 +31,5 @@ private:
 	FFMuxer* Muxer = nullptr;
 	class UStreamDataSingleton* StreamDataSingleton = nullptr;
 	void ReadRGBFromViewportToBuffer(FViewport *Viewport);
-	bool SetSingleton();
+	bool SetSingleton();	
 };

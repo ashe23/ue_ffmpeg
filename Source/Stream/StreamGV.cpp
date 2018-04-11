@@ -39,12 +39,13 @@ void UStreamGV::Draw(FViewport * Viewport, FCanvas * SceneCanvas)
 	if (StreamDataSingleton->CanStream)
 	{
 		ReadRGBFromViewportToBuffer(Viewport);
-	}
+	}		
 }
 
 void UStreamGV::BeginDestroy()
 {
 	Super::BeginDestroy();
+
 	
 	UE_LOG(LogTemp, Warning, TEXT("Gameviewport destroying step!"));
 }
