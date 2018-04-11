@@ -19,11 +19,11 @@ AStreamGameMode::AStreamGameMode()
 
 void AStreamGameMode::BeginPlay()
 {
-	Super::BeginPlay();
+	Super::BeginPlay();	
 
 	if (GEngine)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Game mode begin played called. Game default configs setting here."));
+		//UE_LOG(LogTemp, Warning, TEXT("Game mode begin played called. Game default configs setting here."));
 		UGameUserSettings* MyGameSettings = GEngine->GetGameUserSettings();
 		MyGameSettings->SetScreenResolution(FIntPoint(1280, 720));
 		MyGameSettings->SetFullscreenMode(EWindowMode::Windowed);

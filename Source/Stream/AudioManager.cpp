@@ -263,7 +263,7 @@ void AudioManager::addAudioList(const TArray<FString>& filenames)
 }
 
 AudioPCM AudioManager::getAudio(const FString & filename) const
-{	
+{
 	check(mAudioSet.Contains(filename));
 	return mAudioSet[filename];
 }

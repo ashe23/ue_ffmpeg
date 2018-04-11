@@ -19,7 +19,8 @@ public class Stream : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-        PublicDependencyModuleNames.AddRange(new string[] { "Core",
+        PublicDependencyModuleNames.AddRange(new string[] {
+            "Core",
             "CoreUObject",
             "Engine",
             "InputCore",

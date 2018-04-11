@@ -10,7 +10,10 @@
 #include "Engine/GameViewportClient.h"
 #include "Runtime/Core/Public/Misc/FileHelper.h"
 #include "Runtime/Engine/Classes/Engine/Engine.h"
+#include "StreamGameMode.h"
 #include "StreamGV.generated.h"
+
+DECLARE_STATS_GROUP(TEXT("StreamGV Viewport"), STATGROUP_FFGameplayStreaming, STATCAT_Advanced);
 
 /**
  * 
@@ -26,6 +29,7 @@ class STREAM_API UStreamGV : public UGameViewportClient
 
 private:
 	FFMuxer* Muxer = nullptr;
-
+	class UStreamDataSingleton* StreamDataSingleton = nullptr;
 	void ReadRGBFromViewportToBuffer(FViewport *Viewport);
+	bool SetSingleton();
 };

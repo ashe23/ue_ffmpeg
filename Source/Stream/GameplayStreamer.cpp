@@ -1,8 +1,8 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "GameplayStreamer.h"
-
 #include "Runtime/Core/Public/HAL/RunnableThread.h"
+#include "StreamDataSingleton.h"
 #include "Engine.h"
 #include "FFMuxer.h"
 
@@ -12,7 +12,9 @@ MuxerWorker* MuxerWorker::Runnable = nullptr;
 AGameplayStreamer::AGameplayStreamer()
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = true;	
+
+	SetGameSingletonClass();
 }
 
 AGameplayStreamer::~AGameplayStreamer()
@@ -21,10 +23,8 @@ AGameplayStreamer::~AGameplayStreamer()
 
 // Called when the game starts or when spawned
 void AGameplayStreamer::BeginPlay()
-{
-	UE_LOG(LogTemp, Warning, TEXT("BeginPlay"));
-	Super::BeginPlay();
-	this->StartStream();
+{	
+	Super::BeginPlay();	
 }
 
 
@@ -40,25 +40,42 @@ void AGameplayStreamer::Tick(float DeltaTime)
 void AGameplayStreamer::StartStream()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Starting stream..."));	
-	mWorker = MuxerWorker::JoyInit();
 
-	if (mWorker)
+	if (StreamDataSingleton)
 	{
-		mWorker->mMuxer->FillAudioBuffer(AudioTracks);
+		StreamDataSingleton->CanStream = true;
+
+		mWorker = MuxerWorker::JoyInit();
+
+		if (mWorker)
+		{
+			mWorker->mMuxer->FillAudioBuffer(AudioTracks);
+		}
 	}
+
 }
 
 // stops stream, releases data
 void AGameplayStreamer::StopStream()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Stop stream..."));
-	MuxerWorker::JoyInit()->Stop();	
+
+	if (StreamDataSingleton)
+	{
+		StreamDataSingleton->CanStream = false;
+		MuxerWorker::JoyInit()->Stop();
+	}
 }
 // pauses stream, but not realeasing data
 void AGameplayStreamer::PauseStream()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Pause stream..."));
-	MuxerWorker::JoyInit()->Stop();
+
+	if (StreamDataSingleton)
+	{
+		StreamDataSingleton->CanStream = false;
+		MuxerWorker::JoyInit()->Stop();
+	}
 }
 
 void AGameplayStreamer::SetAudioTrack(FString AudioTrackName)
@@ -75,7 +92,7 @@ void AGameplayStreamer::SetAudioTrack(FString AudioTrackName)
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Worker not initialized yet!!!"));
+		UE_LOG(LogTemp, Warning, TEXT("MuxerWorker not initialized yet!!!"));
 	}
 }
 
@@ -99,6 +116,14 @@ void AGameplayStreamer::FillAudioBuffers(TArray<FString> Tracks)
 	{
 		FCriticalSection Locker;
 		mWorker->mMuxer->FillAudioBuffer(Tracks);
+	}
+}
+
+void AGameplayStreamer::SetGameSingletonClass()
+{
+	if (GEngine)
+	{
+		StreamDataSingleton = (UStreamDataSingleton *)GEngine->GameSingleton;
 	}
 }
 

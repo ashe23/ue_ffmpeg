@@ -6,6 +6,7 @@
 #include "Async.h"
 #include "GameFramework/Actor.h"
 #include "Runtime/Core/Public/Templates/UniquePtr.h"
+#include "StreamGameMode.h"
 
 #include <thread>
 #include <mutex>
@@ -88,7 +89,11 @@ public:
 	void FillAudioBuffers(TArray<FString> AudioBuffers);
 
 	UPROPERTY(BlueprintReadWrite,EditAnywhere, Category = "GameplayStreaming")
-	TArray<FString> AudioTracks;
+	TArray<FString> AudioTracks;	
 private:
-	MuxerWorker* mWorker;	
+	MuxerWorker* mWorker;
+
+	class UStreamDataSingleton* StreamDataSingleton = nullptr;
+
+	void SetGameSingletonClass();
 };
