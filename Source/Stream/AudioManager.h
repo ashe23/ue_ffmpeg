@@ -1,6 +1,6 @@
 #pragma once
 
-#include "buffer.h"
+#include "FFHeader.h"
 
 class AudioPCM;
 
@@ -22,6 +22,10 @@ public:
 	FString getName() const { return mName; }
 	size_t getSize() const { return mSize; }
 	TArray<uint8> getBuffer() const { return mBuffer; }
+
+private:
+	void printAudioFrameInfo(const AVCodecContext* codecContext, const AVFrame* frame);
+	int readFilePackets(const FString& AudioFilePath);
 
 private:
 	FString mName;

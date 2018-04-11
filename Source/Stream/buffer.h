@@ -12,7 +12,7 @@
 template<typename T, size_t buffsize = 1, typename Adder = BlockingAdder, typename Remover = BlockingRemover>
 class Buffer;
 
-using VideoBuffer = Buffer<TArray<FColor>, 30, RemoveOldElementsAdder, BlockingRemover>;
+using VideoBuffer = Buffer<TArray<FColor>, 30, RemoveOldElementsAdder<3>, BlockingRemover>;
 //using AudioBuffer = Buffer<int16, std::numeric_limits<uint64>::max()>;
 
 /*
