@@ -80,6 +80,7 @@ Non blocking add Policy
 which removes old elements
 to make room for new ones.
 */
+template<size_t part>
 struct RemoveOldElementsAdder
 {
 	template <typename BufferT>
@@ -87,7 +88,7 @@ struct RemoveOldElementsAdder
 	{
 		std::unique_lock<std::mutex> locker(lock);
 		if (buffer.size() == size) {
-			buffer.erase(buffer.begin(), buffer.begin() + buffer.size() / 3);
+			buffer.erase(buffer.begin(), buffer.begin() + buffer.size() / part);
 		}
 		buffer.push_back(e);
 		locker.unlock();
@@ -97,23 +98,30 @@ struct RemoveOldElementsAdder
 
 /*
 Non blocking add Policy
-which removes every 3rd element
+which removes every Nth element
 to make room for new ones.
 */
-//struct RemoveOldElementsAdder
-//{
-//	template <typename BufferT>
-//	void operator() (std::mutex& lock, std::condition_variable& condVar, BufferT& buffer, size_t size, const typename BufferT::value_type e)
-//	{
-//		std::unique_lock<std::mutex> locker(lock);
-//		if (buffer.size() == size) {
-//			// todo
-//		}
-//		buffer.push_back(e);
-//		locker.unlock();
-//		condVar.notify_all();
-//	}
-//};
+template<size_t N>
+struct RemoveEveryNthElementsAdder
+{
+	template <typename BufferT>
+	void operator() (std::mutex& lock, std::condition_variable& condVar, BufferT& buffer, size_t size, const typename BufferT::value_type e)
+	{
+		std::unique_lock<std::mutex> locker(lock);
+		if (buffer.size() == size) {
+			int i = 0;
+			buffer.erase(std::remove_if(buffer.begin(), buffer.end(),
+				[&i](const ValueT&)
+			{
+				return ++i % N == 0;
+			},
+				buffer.end()));
+		}
+		buffer.push_back(e);
+		locker.unlock();
+		condVar.notify_all();
+	}
+};
 
 /*
 Non blocking remove Policy

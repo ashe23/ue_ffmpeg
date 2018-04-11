@@ -328,7 +328,7 @@ void FFMuxer::OpenVideo()
 	int ret;
 
 	av_dict_set(&Dictionary, "profile", "high", 0);
-	av_dict_set(&Dictionary, "preset", "superfast", 0);
+	av_dict_set(&Dictionary, "preset", "slower", 0);
 	av_dict_set(&Dictionary, "tune", "zerolatency", 0);
 
 	//video_st.next_pts = 0;
